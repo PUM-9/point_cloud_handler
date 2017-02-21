@@ -1,0 +1,5 @@
+uint16 accuracy
+---
+sensor_msgs/PointCloud2 point_cloud
+int16 exit_code
+string error_message
