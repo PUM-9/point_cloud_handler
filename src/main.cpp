@@ -5,31 +5,34 @@
 #include <iostream>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
+#include <pcl_ros/point_cloud.h>
 #include "ros/ros.h"
+#include "point_cloud_handler/GetPointCloud.h"
+
+typedef sensor_msgs::PointCloud2 PointCloud;
+
+bool
+get_point_cloud (point_cloud_handler::GetPointCloud::Request &req,
+                     point_cloud_handler::GetPointCloud::Response &resp)
+{
+    PointCloud::Ptr pc (new PointCloud);
+    pc->header.frame_id = "some_tf_frame";
+    pc->height = pc->width = req.accuracy;
+    resp.point_cloud = *pc;
+    resp.exit_code = 0;
+    resp.error_message = "";
+    return true;
+}
 
 int
 main (int argc, char** argv)
 {
-    pcl::PointCloud<pcl::PointXYZ> cloud;
+    ros::init(argc, argv, "poin_cloud_handler");
+    ros::NodeHandle node_handle;
 
-    // Fill in the cloud data
-    cloud.width    = 5;
-    cloud.height   = 1;
-    cloud.is_dense = false;
-    cloud.points.resize (cloud.width * cloud.height);
-
-    for (size_t i = 0; i < cloud.points.size (); ++i)
-    {
-        cloud.points[i].x = 1024 * rand () / (RAND_MAX + 1.0f);
-        cloud.points[i].y = 1024 * rand () / (RAND_MAX + 1.0f);
-        cloud.points[i].z = 1024 * rand () / (RAND_MAX + 1.0f);
-    }
-
-    pcl::io::savePCDFileASCII ("test_pcd.pcd", cloud);
-    std::cerr << "Saved " << cloud.points.size () << " data points to test_pcd.pcd." << std::endl;
-
-    for (size_t i = 0; i < cloud.points.size (); ++i)
-        std::cerr << "    " << cloud.points[i].x << " " << cloud.points[i].y << " " << cloud.points[i].z << std::endl;
+    ros::ServiceServer service = node_handle.advertiseService("get_point_cloud", get_point_cloud);
+    ROS_INFO("Ready to serve point clouds");
+    ros::spin();
 
     return (0);
 }
