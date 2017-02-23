@@ -68,10 +68,11 @@ generate_scans(uint16 accuracy, std::vector<Scan>& scans)
 }
 
 bool 
-get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
+get_point_cloud(getPointCloud::Request &req, getPointCloud::Response &resp)
 {
     std::vector<Scan> scans;
     generate_scans(req.accuracy, scans);
+    
     return true;
 }    
 
