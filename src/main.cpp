@@ -26,7 +26,7 @@ struct scanData
 };
 
 void
-generate_scans(uint16 accuracy, std::vector<Scan>& scans) 
+generate_scans(uint16 accuracy, std::vector<scanData>& scans) 
 {
 
     degrees y_rotate = 100 / accuracy;
@@ -70,9 +70,13 @@ generate_scans(uint16 accuracy, std::vector<Scan>& scans)
 bool 
 get_point_cloud(getPointCloud::Request &req, getPointCloud::Response &resp)
 {
-    std::vector<Scan> scans;
+    std::vector<scanData> scans;
     generate_scans(req.accuracy, scans);
     
+    resp.point_cloud = scans[0].point_cloud_message;
+    resp.exit_code = 0;
+    resp.error_message = "hej";
+
     return true;
 }    
 
@@ -84,6 +88,7 @@ main (int argc, char** argv)
     ros::NodeHandle node_handle;
     ros::ServiceServer service = node_handle.advertiseService("get_point_cloud", get_point_cloud);
     ROS_INFO("Ready to serve point clouds");
+    ros::spin();
 
     return (0);
 }
