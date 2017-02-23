@@ -25,8 +25,8 @@ struct scanData
     degrees x_angle;
 };
 
-std::vector<scanData>
-generate_scans(uint16 accuracy) 
+void
+generate_scans(uint16 accuracy, std::vector<Scan>& scans) 
 {
 
     degrees y_rotate = 100 / accuracy;
@@ -39,7 +39,6 @@ generate_scans(uint16 accuracy)
     int times_to_scan_y = std::floor((y_max - y_min) / y_rotate);
     degrees y_angle = y_min;
     degrees x_angle;
-    std::vector<scanData> scans;
     ros::NodeHandle node_handle;
     ros::ServiceClient client = node_handle.serviceClient<scanService>("wrapper_scan");
 
@@ -66,17 +65,13 @@ generate_scans(uint16 accuracy)
         }
         y_angle = y_angle + y_rotate;
     }
-
-
-    return scans;
-
 }
 
 bool 
 get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
 {
-    
-    std::vector<Scan> scans = generate_scans(req.accuracy);
+    std::vector<Scan> scans;
+    generate_scans(req.accuracy, scans);
     return true;
 }    
 
