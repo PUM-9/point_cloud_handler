@@ -73,10 +73,10 @@ generate_scans(uint16 accuracy)
 }
 
 bool 
-get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
+get_point_cloud(getPointCloud::Request &req, getPointCloud::Response &resp)
 {
     
-    std::vector<Scan> scans = generate_scans(req.accuracy);
+    std::vector<scanData> scans = generate_scans(req.accuracy);
     return true;
 }    
 
