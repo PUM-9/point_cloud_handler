@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
   pcl_conversions
   pcl_ros
+  treedwrapper
 )
 
 ## System dependencies are found with CMake's conventions
@@ -104,7 +105,7 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES point_cloud_handler
-  CATKIN_DEPENDS roscpp rospy sensor_msgs std_msgs
+  CATKIN_DEPENDS roscpp rospy sensor_msgs std_msgs treedwrapper
   DEPENDS Boost
 )
 
