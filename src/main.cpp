@@ -15,7 +15,7 @@ typedef sensor_msgs::PointCloud2 pointCloudMessage;
 typedef pcl::PointCloud<pcl::PointXYZ> pointCloud;
 typedef treedwrapper::WrapperScan scanService;
 typedef point_cloud_handler::GetPointCloud getPointCloud;
-typedef float degrees;
+typedef int degrees;
 typedef unsigned short int uint16;
 
 struct scanData 
@@ -35,8 +35,8 @@ generate_scans(uint16 accuracy)
     degrees y_max = 359;
     degrees x_min = -20;
     degrees x_max = 90;
-    int times_to_scan_x = std::floor((x_max - x_min) / x_rotate);
-    int times_to_scan_y = std::floor((y_max - y_min) / y_rotate);
+    double times_to_scan_x = std::floor((x_max - x_min) / x_rotate);
+    double times_to_scan_y = std::floor((y_max - y_min) / y_rotate);
     degrees y_angle = y_min;
     degrees x_angle;
     std::vector<scanData> scans;
