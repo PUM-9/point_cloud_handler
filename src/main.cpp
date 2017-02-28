@@ -82,7 +82,6 @@ generate_scans(uint16 accuracy, std::vector<scanData> &scans)
         x_angle = x_angle + x_rotate;
     }
     return true;
-    
 }
 
 /**
