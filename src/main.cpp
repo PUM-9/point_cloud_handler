@@ -29,7 +29,7 @@ struct scanData
     Every scan will be stored as an scanData object which consist of angles of the board and the point cloud. 
     @param accuracy This will set the precision on the scan, in other words, how many times to scan.
     @param scans The vector to store all scanData objects in.
-    @return None
+    @return true if success, false otherwise.
 */
 bool
 generate_scans(uint16 accuracy, std::vector<scanData> &scans) 
@@ -96,7 +96,7 @@ get_point_cloud(getPointCloud::Request &req, getPointCloud::Response &resp)
     // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
     std::vector<scanData> scans;
     
-    // Generate the scans, it will return true if succes to call the wrapper service, false if not not succeed.
+    // Generate the scans, it will return true if success to call the wrapper service, false if not not succeed.
     if (generate_scans(req.accuracy, scans)){
         // The code for point cloud registration should be implemented here, the sample below is just test code.
         resp.point_cloud = scans[0].point_cloud_message;
