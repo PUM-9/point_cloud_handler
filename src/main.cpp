@@ -96,7 +96,7 @@ get_point_cloud(getPointCloud::Request &req, getPointCloud::Response &resp)
     // Check if the accuracy is valid.
     if (req.accuracy <= 0) {
         resp.exit_code = 1;
-        resp.error_message = "Invalid accuracy, should be greater than 0"
+        resp.error_message = "Invalid accuracy, should be greater than 0";
         return true;
     }
     
