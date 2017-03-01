@@ -93,11 +93,18 @@ generate_scans(uint16 accuracy, std::vector<scanData> &scans)
 bool 
 get_point_cloud(getPointCloud::Request &req, getPointCloud::Response &resp)
 {
+    // Check if the accuracy is valid.
+    if (req.accuracy <= 0) {
+        resp.exit_code = 1;
+        resp.error_message = "Invalid accuracy, should be greater than 0"
+        return true;
+    }
+    
     // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
     std::vector<scanData> scans;
     
     // Generate the scans, it will return true if succes to call the wrapper service, false if not not succeed.
-    if (generate_scans(req.accuracy, scans)){
+    if (generate_scans(req.accuracy, scans)) {
         // The code for point cloud registration should be implemented here, the sample below is just test code.
         resp.point_cloud = scans[0].point_cloud_message;
         resp.exit_code = 0;
