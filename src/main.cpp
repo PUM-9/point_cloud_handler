@@ -94,9 +94,9 @@ bool
 get_point_cloud(getPointCloud::Request &req, getPointCloud::Response &resp)
 {
     // Check if the accuracy is valid.
-    if (req.accuracy <= 0 || req.accuracy >= 10) {
+    if (req.accuracy <= 0 || req.accuracy > 10) {
         resp.exit_code = 1;
-        resp.error_message = "Invalid accuracy, should be between 0 and 10";
+        resp.error_message = "Invalid accuracy, should be between 1 and 10";
         return true;
     }
     
