@@ -7,10 +7,9 @@
 #include "point_cloud_handler/GetPointCloud.h"
 #include "treedwrapper/WrapperScan.h"
 
-typedef sensor_msgs::PointCloud2 pointCloudMessage;
-typedef pcl::PointCloud<pcl::PointXYZ> pointCloud;
-typedef treedwrapper::WrapperScan scanService;
-typedef point_cloud_handler::GetPointCloud getPointCloud;
+typedef sensor_msgs::PointCloud2 PointCloudMessage;
+typedef treedwrapper::WrapperScan ScanService;
+typedef point_cloud_handler::GetPointCloud GetPointCloud;
 typedef int degrees;
 typedef unsigned short int uint16;
 
@@ -19,7 +18,7 @@ typedef unsigned short int uint16;
 */
 struct scanData 
 {
-    pointCloudMessage point_cloud_message;
+    PointCloudMessage point_cloud_message;
     degrees y_angle;
     degrees x_angle;
 };
@@ -54,7 +53,7 @@ generate_scans(uint16 accuracy, std::vector<scanData> &scans)
     
     // Define the client that will be used to call the wrapper_scan service. 
     ros::NodeHandle node_handle;
-    ros::ServiceClient client = node_handle.serviceClient<scanService>("wrapper_scan");
+    ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
     
     // For every angle in x, rotate the board on every angle on the y axis.    
     for (int i = 0; i < times_to_scan_x; ++i) {
@@ -63,11 +62,11 @@ generate_scans(uint16 accuracy, std::vector<scanData> &scans)
             y_angle = y_angle + y_rotate;
             
             // Setup the scan service and request the service to set the angles.
-            scanService srv;
+            ScanService srv;
             srv.request.y_angle = y_angle;
             srv.request.x_angle = x_angle;
             
-            // Call the scanService (wrapper), it will return true if service call succeeded, it will return false if the call not succeed.
+            // Call the ScanService (wrapper), it will return true if service call succeeded, it will return false if the call not succeed.
             // It will also check if the exit_code is valid (return 0).
             if (client.call(srv) && !srv.response.exit_code) {
                 scanData scan_data;
@@ -91,7 +90,7 @@ generate_scans(uint16 accuracy, std::vector<scanData> &scans)
     @return true when the process to gathering and regiser point clouds is done.
 */
 bool 
-get_point_cloud(getPointCloud::Request &req, getPointCloud::Response &resp)
+get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
 {
     // Check if the accuracy is valid.
     if (req.accuracy <= 0 || req.accuracy > 10) {
