@@ -101,7 +101,6 @@ message_to_cloud(const PointCloudMessage &message, CloudPtr cloud) {
 degrees
 get_start_angle(ros::ServiceClient client)
 {
-    std::cout << "9";
     CloudPtr current_cloud_ptr (new Cloud());
     CloudPtr optimal_cloud_ptr (new Cloud());
     CloudPtr temp_cloud_ptr (new Cloud());
@@ -110,14 +109,12 @@ get_start_angle(ros::ServiceClient client)
     const unsigned int times_to_scan = 5;
     degrees rotation = 90/times_to_scan;
     bool first = true;
-    std::cout << "10";
 
     // Setup the scan service and request the service to set the angles.
     ScanService srv;
     srv.request.x_angle = 0;
     // Call the ScanService (wrapper), it will return true if service call succeeded, it will return false if the call not succeed.
     // It will also check if the exit_code is valid (return 0).
-    std::cout << "11";
     for (degrees v=0; v <= 90; v+=rotation) {
 
         srv.request.y_angle = v;
@@ -140,7 +137,6 @@ get_start_angle(ros::ServiceClient client)
             }
         }
     }
-    std::cout << "12";
     return optimal_angle;
 }
 
@@ -213,10 +209,8 @@ generate_scans(uint16 accuracy, std::vector<scanData> &scans)
 bool 
 get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
 {
-    std::cout << "6";
     ros::NodeHandle node_handle;
     ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
-    std::cout << "7";
     degrees start = 0; //get_start_angle(client);
     std::cout << "start at angle: " << start << std::endl;
     // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
@@ -225,7 +219,6 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
     degrees x_angle = 0;
     degrees y_angle = 0;
     srv.request.x_angle = x_angle;
-    std::cout << "8";
     for (int i=0; i < 4; i++) {
         y_angle = start + i*90;
         srv.request.y_angle = y_angle;
@@ -240,7 +233,8 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
             pcl::io::savePCDFile("scan_" + std::to_string(i),*cloud_to_save_ptr);
 
         } else {
-            return false;
+            resp.exit_code = 1;
+            resp.error_message = "Failed to call service wrapper_scan";
         }
     }
 
@@ -257,15 +251,10 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
 int
 main (int argc, char** argv)
 {
-    std::cout << "1";
     ros::init(argc, argv, "point_cloud_handler");
-    std::cout << "2";
     ros::NodeHandle node_handle;
-    std::cout << "3";
     ros::ServiceServer service = node_handle.advertiseService("get_point_cloud", get_point_cloud);
-    std::cout << "4";
     ROS_INFO("Ready to serve point clouds");
-    std::cout << "5";
     ros::spin();
     return (0);
 }
