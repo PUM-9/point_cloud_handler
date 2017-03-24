@@ -105,12 +105,13 @@ get_start_angle(ros::ServiceClient client)
 {
 
     CloudPtr current_cloud_ptr (new Cloud());
-    CloudPtr optimal_cloud_ptr = nullptr;
+    CloudPtr optimal_cloud_ptr (new Cloud());
     CloudPtr temp_cloud_ptr (new Cloud());
     degrees optimal_angle;
     float optimal_depth;
     const unsigned int times_to_scan = 5;
     degrees rotation = 90/times_to_scan;
+    bool first = true;
 
 
     // Setup the scan service and request the service to set the angles.
@@ -133,10 +134,11 @@ get_start_angle(ros::ServiceClient client)
 
             float current_depth = find_depth(current_cloud_ptr);
 
-            if (!optimal_cloud_ptr || current_depth < optimal_depth) {
+            if (first || current_depth < optimal_depth) {
                 optimal_cloud_ptr = current_cloud_ptr;
                 optimal_depth = current_depth;
                 optimal_angle = v;
+                first = false;
             }
         }
     }
