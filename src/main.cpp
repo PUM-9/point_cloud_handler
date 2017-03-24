@@ -217,7 +217,7 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
     ros::NodeHandle node_handle;
     ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
     std::cout << "7";
-    degrees start = get_start_angle(client);
+    degrees start = 0; //get_start_angle(client);
     std::cout << "start at angle: " << start << std::endl;
     // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
     std::vector<scanData> scans;
