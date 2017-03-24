@@ -6,12 +6,23 @@
 #include "ros/ros.h"
 #include "point_cloud_handler/GetPointCloud.h"
 #include "treedwrapper/WrapperScan.h"
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/point_types.h>
+#include <pcl/PCLPointCloud2.h>
+#include <pcl/conversions.h>
+#include <pcl_ros/transforms.h>
+#include <pcl/filters/passthrough.h>
 
 typedef sensor_msgs::PointCloud2 PointCloudMessage;
 typedef treedwrapper::WrapperScan ScanService;
 typedef point_cloud_handler::GetPointCloud GetPointCloud;
 typedef int degrees;
 typedef unsigned short int uint16;
+
+
+typedef pcl::PointXYZ Point;
+typedef pcl::PointCloud<Point> Cloud;
+typedef Cloud::Ptr CloudPtr;
 
 /**
     Struct that will be used to store the point clouds as an object.
@@ -22,6 +33,76 @@ struct scanData
     degrees y_angle;
     degrees x_angle;
 };
+
+unsigned float find_depth(CloudPtr cloud) {
+
+    float biggest_z = cloud->points[0].z;
+    float smallest_z = biggest_z;
+
+    for (int i=1; i < cloud->size(); i++) {
+
+        current_z = cloud->points[i].z;
+
+        if (current_z > biggest_z) {
+            biggest_z = current_z;
+        }
+
+        if (current_z < smallest_z) {
+            smallest_z = current_z;
+        }
+
+    }
+
+    return biggest_z - smallest_z;
+
+}
+
+void filter() {
+
+}
+
+degrees
+get_start_angle(ros::ServiceClient client)
+{
+
+    CloudPtr current_cloud_ptr (new Cloud());
+    CloudPtr optimal_cloud_ptr (new Cloud());
+    degrees optimal_angle;
+    unsigned int optimal_depth;
+    const unsigned int times_to_scan = 5;
+    degrees rotation = 90/times_to_scan;
+
+
+    // Setup the scan service and request the service to set the angles.
+    ScanService srv;
+    srv.request.x_angle = 0;
+    // Call the ScanService (wrapper), it will return true if service call succeeded, it will return false if the call not succeed.
+    // It will also check if the exit_code is valid (return 0).
+
+    for (degrees v=0; v <= 90; v+=rotation) {
+
+        srv.request.y_angle = v;
+
+        if (client.call(srv) && !srv.response.exit_code) {
+
+            const PointCloudMessage msg = srv.response.point_cloud;
+
+            pcl::PCLPointCloud2 pcl_pc2;
+            pcl_conversions::toPCL(msg,pcl_pc2);
+            pcl::fromPCLPointCloud2(pcl_pc2,*current_cloud_ptr);
+
+
+            unsigned float current_depth = find_depth(current_cloud_ptr);
+
+            if (!optimal_cloud_ptr || current_depth < optimal_depth) {
+                optimal_cloud_ptr = current_cloud_ptr;
+                optimal_depth = current_depth;
+                optimal_angle = v;
+            }
+        }
+    }
+    return v;
+}
 
 /**
     This function will call the treed_wrapper node to generate scans.
@@ -92,28 +173,34 @@ generate_scans(uint16 accuracy, std::vector<scanData> &scans)
 bool 
 get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
 {
-    // Check if the accuracy is valid.
-    if (req.accuracy <= 0 || req.accuracy > 10) {
-        resp.exit_code = 1;
-        resp.error_message = "Invalid accuracy, should be between 1 and 10";
-        return true;
-    }
-    
+
+    ros::NodeHandle node_handle;
+    ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
+
+    degrees start = get_start_angle(client);
+    cout << "start at angle: " << start << endl;
     // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
     std::vector<scanData> scans;
-    
-    // Generate the scans, it will return true if success to call the wrapper service, false if not not succeed.
-    if (generate_scans(req.accuracy, scans)) {
-        // The code for point cloud registration should be implemented here, the sample below is just test code.
-        resp.point_cloud = scans[0].point_cloud_message;
-        resp.exit_code = 0;
-        resp.error_message = "";    
-    } else {
-        resp.exit_code = 1;
-        resp.error_message = "Failed to call service wrapper_scan";
+    ScanService srv;
+    srv.request.x_angle = x_angle;
+
+    for (int i=0; i < 4; i++) {
+
+        srv.request.y_angle = start + i*90;
+        if (client.call(srv) && !srv.response.exit_code) {
+            scanData scan_data;
+            scan_data.y_angle = y_angle;
+            scan_data.x_angle = x_angle;
+            scan_data.point_cloud_message = srv.response.point_cloud;
+            scans.push_back(scan_data);
+        } else {
+            return false;
+        }
     }
+
     return true;
-}    
+}
+
 
 /**
     Main function that will init a ros node and spin up the get_point_cloud service. 
@@ -126,7 +213,7 @@ main (int argc, char** argv)
 {
     ros::init(argc, argv, "point_cloud_handler");
     ros::NodeHandle node_handle;
-    ros::ServiceServer service = node_handle.advertiseService("get_point_cloud", get_point_cloud);
+    ros::ServiceServer service = node_handle.advertiseService("face_ractangle", get_point_cloud);
     ROS_INFO("Ready to serve point clouds");
     ros::spin();
     return (0);
