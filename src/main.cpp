@@ -12,6 +12,7 @@
 #include <pcl/conversions.h>
 #include <pcl_ros/transforms.h>
 #include <pcl/filters/passthrough.h>
+#include <pcl/filters/radius_outlier_removal.h>
 
 typedef sensor_msgs::PointCloud2 PointCloudMessage;
 typedef treedwrapper::WrapperScan ScanService;
@@ -57,7 +58,37 @@ unsigned float find_depth(CloudPtr cloud) {
 
 }
 
-void filter() {
+
+void filter(const CloudPtr before, CloudPtr after) {
+    CloudPtr temp_cloud_ptr = before;
+    pcl::PassThrough<Point> pass;
+
+
+    // Filter out stick
+    pass.setInputCloud(temp_cloud_ptr);
+    pass.setFilterFieldName("x");
+    pass.setFilterLimits(400, 513);
+    pass.setFilterLimitsNegative(false);
+    pass.filter(*after);
+
+    temp_cloud_ptr = after;
+
+    pass.setInputCloud(temp_cloud_ptr);
+    pass.setFilterFieldName("y");
+    pass.setFilterLimits(-1, 1);
+    pass.setFilterLimitsNegative(true);
+    pass.filter(*after);
+
+    temp_cloud_ptr = after;
+
+    // Remove points that are far away from one another.
+    pcl::RadiusOutlierRemoval<pcl::PointXYZ> outlier_filter;
+    outlier_filter.setInputCloud(temp_cloud_ptr);
+    outlier_filter.setRadiusSearch(0.8);
+    outlier_filter.setMinNeighborsInRadius(2);
+    outlier_filter.filter(*after);
+
+
 
 }
 
@@ -65,8 +96,9 @@ degrees
 get_start_angle(ros::ServiceClient client)
 {
 
-    CloudPtr current_cloud_ptr (new Cloud());
-    CloudPtr optimal_cloud_ptr (new Cloud());
+    CloudPtr current_cloud_ptr = nullptr;
+    CloudPtr optimal_cloud_ptr = nullptr;
+    CloudPtr temp_cloud_ptr = nullptr;
     degrees optimal_angle;
     unsigned int optimal_depth;
     const unsigned int times_to_scan = 5;
@@ -89,8 +121,9 @@ get_start_angle(ros::ServiceClient client)
 
             pcl::PCLPointCloud2 pcl_pc2;
             pcl_conversions::toPCL(msg,pcl_pc2);
-            pcl::fromPCLPointCloud2(pcl_pc2,*current_cloud_ptr);
+            pcl::fromPCLPointCloud2(pcl_pc2,*temp_cloud_ptr);
 
+            filter(temp_cloud_ptr, current_cloud_ptr);
 
             unsigned float current_depth = find_depth(current_cloud_ptr);
 
