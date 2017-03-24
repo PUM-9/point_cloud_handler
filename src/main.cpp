@@ -41,7 +41,7 @@ unsigned float find_depth(CloudPtr cloud) {
 
     for (int i=1; i < cloud->size(); i++) {
 
-        current_z = cloud->points[i].z;
+        float current_z = cloud->points[i].z;
 
         if (current_z > biggest_z) {
             biggest_z = current_z;
@@ -68,7 +68,7 @@ get_start_angle(ros::ServiceClient client)
     CloudPtr current_cloud_ptr (new Cloud());
     CloudPtr optimal_cloud_ptr (new Cloud());
     degrees optimal_angle;
-    unsigned int optimal_depth;
+    unsigned float optimal_depth;
     const unsigned int times_to_scan = 5;
     degrees rotation = 90/times_to_scan;
 
@@ -101,7 +101,7 @@ get_start_angle(ros::ServiceClient client)
             }
         }
     }
-    return v;
+    return optimal_angle;
 }
 
 /**
@@ -178,7 +178,7 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
     ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
 
     degrees start = get_start_angle(client);
-    cout << "start at angle: " << start << endl;
+    std::cout << "start at angle: " << start << std::endl;
     // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
     std::vector<scanData> scans;
     ScanService srv;
