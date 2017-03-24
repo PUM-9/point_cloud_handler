@@ -13,6 +13,7 @@
 #include <pcl_ros/transforms.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/radius_outlier_removal.h>
+#include <string>
 
 typedef sensor_msgs::PointCloud2 PointCloudMessage;
 typedef treedwrapper::WrapperScan ScanService;
@@ -35,7 +36,7 @@ struct scanData
     degrees x_angle;
 };
 
-unsigned float find_depth(CloudPtr cloud) {
+float find_depth(CloudPtr cloud) {
 
     float biggest_z = cloud->points[0].z;
     float smallest_z = biggest_z;
@@ -92,6 +93,13 @@ void filter(const CloudPtr before, CloudPtr after) {
 
 }
 
+void
+message_to_cloud(const PointCloudMessage &message, CloudPtr cloud) {
+    pcl::PCLPointCloud2 pcl_pc2;
+    pcl_conversions::toPCL(message,pcl_pc2);
+    pcl::fromPCLPointCloud2(pcl_pc2,*cloud);
+}
+
 degrees
 get_start_angle(ros::ServiceClient client)
 {
@@ -100,7 +108,7 @@ get_start_angle(ros::ServiceClient client)
     CloudPtr optimal_cloud_ptr = nullptr;
     CloudPtr temp_cloud_ptr = nullptr;
     degrees optimal_angle;
-    unsigned float optimal_depth;
+    float optimal_depth;
     const unsigned int times_to_scan = 5;
     degrees rotation = 90/times_to_scan;
 
@@ -119,13 +127,11 @@ get_start_angle(ros::ServiceClient client)
 
             const PointCloudMessage msg = srv.response.point_cloud;
 
-            pcl::PCLPointCloud2 pcl_pc2;
-            pcl_conversions::toPCL(msg,pcl_pc2);
-            pcl::fromPCLPointCloud2(pcl_pc2,*temp_cloud_ptr);
+            message_to_cloud(msg, temp_cloud_ptr);
 
             filter(temp_cloud_ptr, current_cloud_ptr);
 
-            unsigned float current_depth = find_depth(current_cloud_ptr);
+            float current_depth = find_depth(current_cloud_ptr);
 
             if (!optimal_cloud_ptr || current_depth < optimal_depth) {
                 optimal_cloud_ptr = current_cloud_ptr;
@@ -215,17 +221,23 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
     // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
     std::vector<scanData> scans;
     ScanService srv;
+    degrees x_angle = 0;
+    degrees y_angle = 0;
     srv.request.x_angle = x_angle;
 
     for (int i=0; i < 4; i++) {
-
-        srv.request.y_angle = start + i*90;
+        y_angle = start + i*90;
+        srv.request.y_angle = y_angle;
         if (client.call(srv) && !srv.response.exit_code) {
             scanData scan_data;
+            CloudPtr cloud_to_save_ptr;
             scan_data.y_angle = y_angle;
             scan_data.x_angle = x_angle;
             scan_data.point_cloud_message = srv.response.point_cloud;
             scans.push_back(scan_data);
+            message_to_cloud(srv.response.point_cloud, cloud_to_save_ptr);
+            pcl::io::savePCDFile("scan_" + std::to_string(i),*cloud_to_save_ptr);
+
         } else {
             return false;
         }
@@ -246,7 +258,7 @@ main (int argc, char** argv)
 {
     ros::init(argc, argv, "point_cloud_handler");
     ros::NodeHandle node_handle;
-    ros::ServiceServer service = node_handle.advertiseService("face_ractangle", get_point_cloud);
+    ros::ServiceServer service = node_handle.advertiseService("get_point_cloud", get_point_cloud);
     ROS_INFO("Ready to serve point clouds");
     ros::spin();
     return (0);
