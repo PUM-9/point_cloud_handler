@@ -15,6 +15,7 @@
 #include <pcl/filters/radius_outlier_removal.h>
 #include <string>
 #include <sstream>
+#include <exception>
 
 #define SSTR( x ) static_cast< std::ostringstream & >( \
         ( std::ostringstream() << std::dec << x ) ).str()
@@ -31,10 +32,18 @@ typedef pcl::PointXYZ Point;
 typedef pcl::PointCloud<Point> Cloud;
 typedef Cloud::Ptr CloudPtr;
 
+using namespace std;
 /**
     Struct that will be used to store the point clouds as an object.
 */
 
+class myexception: public exception
+{
+    virtual const char* what() const throw()
+    {
+        return "My exception happened";
+    }
+} myex;
 
 struct Cuboid {
     CloudPtr point_cloud_ptr;
@@ -47,6 +56,8 @@ struct Rectangle {
     degrees pov_angle;
     Point origo, x, y, xy;
 };
+
+
 
 float find_depth(CloudPtr cloud) {
 
@@ -79,9 +90,12 @@ bool is_rectangle(const Rectangle &rectangle) {
     float y_to_xy = std::abs(rectangle.xy.x - rectangle.y.x);
     float origo_to_y = std::abs(rectangle.y.y - rectangle.origo.y);
 
-    const int tolerance_factor = 20;
+    const int tolerance_factor = 5;
     float x_tolerance = origo_to_x / tolerance_factor;
     float y_tolerance = origo_to_y / tolerance_factor;
+
+    std::cout << "origo -> x: " << origo_to_x << " x->xy: " << x_to_xy << " y->xy: " << y_to_xy << " o->y: " << origo_to_y << endl;
+    std::cout << "x tol: " << x_tolerance << " y tol: " << y_tolerance << endl;
 
     return (std::abs(origo_to_x - y_to_xy) < x_tolerance) && (std::abs(origo_to_y - x_to_xy) < y_tolerance);
 
@@ -208,8 +222,10 @@ get_start_angle(ros::ServiceClient client, const unsigned int times_to_scan)
             filter(temp_cloud_ptr, current_cloud_ptr);
 
             float current_depth = find_depth(current_cloud_ptr);
-
+            std::cout << "current depth" << current_depth << std::endl;
             if (first || current_depth < optimal_depth) {
+                std::cout << "new optimal depth " << current_depth << std::endl;
+                std::cout << "new optimal angle " << v << std::endl;
                 optimal_cloud_ptr = current_cloud_ptr;
                 optimal_depth = current_depth;
                 optimal_angle = v;
@@ -220,7 +236,7 @@ get_start_angle(ros::ServiceClient client, const unsigned int times_to_scan)
     return optimal_angle;
 }
 
-std::vector<Rectangle> scan(ros::ServiceClient client, const unsigned int accuracy) {
+std::vector<Rectangle> scan(ros::ServiceClient client, const unsigned int accuracy) throw() {
     degrees start = get_start_angle(client, accuracy);
     std::cout << "start at angle: " << start << std::endl;
     // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
@@ -339,16 +355,22 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
             default:
                 resp.error_message = "Unknown error";
         }
+
         resp.exit_code = 1;
-        return false;
+        return true;
+
     }
 
     millimeter width = std::abs(scans[0].x.x - scans[0].origo.x);
     millimeter height = std::abs(scans[0].y.y - scans[0].origo.y);
     millimeter depth = std::abs(scans[1].x.x - scans[1].origo.x);
+    std::cout << "0x: " << scans[0].x << "0y: " << scans[0].y <<  "0origo: " << scans[0].origo << std::endl;
+    std::cout << "1x: " << scans[1].x << "1y: " << scans[1].y << "1origo: " << scans[1].origo  << std::endl;
     Cuboid cuboid = generate_cuboid(width, height, depth);
 
-    for (int i)
+    for (int i = 0; i < scans.size(); i++){
+        pcl::io::savePCDFile("rect_" + SSTR(i) + ".pcd", *scans[i].point_cloud_ptr);
+    }
 
     pcl::io::savePCDFile("cuboid.pcd", *cuboid.point_cloud_ptr);
 
