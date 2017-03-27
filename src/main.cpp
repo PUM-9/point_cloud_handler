@@ -14,7 +14,6 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <string>
-
 #include <sstream>
 
 #define SSTR( x ) static_cast< std::ostringstream & >( \
@@ -25,6 +24,7 @@ typedef treedwrapper::WrapperScan ScanService;
 typedef point_cloud_handler::GetPointCloud GetPointCloud;
 typedef int degrees;
 typedef unsigned short int uint16;
+typedef float millimeter;
 
 
 typedef pcl::PointXYZ Point;
@@ -34,11 +34,18 @@ typedef Cloud::Ptr CloudPtr;
 /**
     Struct that will be used to store the point clouds as an object.
 */
-struct scanData 
-{
-    PointCloudMessage point_cloud_message;
-    degrees y_angle;
-    degrees x_angle;
+
+
+struct Cuboid {
+    CloudPtr point_cloud_ptr;
+    degrees pov_angle;
+    Point origo, x, y, z, xy, xz, yz, xyz;
+};
+
+struct Rectangle {
+    CloudPtr point_cloud_ptr;
+    degrees pov_angle;
+    Point origo, x, y, xy;
 };
 
 float find_depth(CloudPtr cloud) {
@@ -64,6 +71,75 @@ float find_depth(CloudPtr cloud) {
 
 }
 
+bool is_rectangle(const Rectangle &rectangle) {
+
+
+    float origo_to_x = std::abs(rectangle.x.x - rectangle.origo.x);
+    float x_to_xy = std::abs(rectangle.xy.y - rectangle.x.y);
+    float y_to_xy = std::abs(rectangle.xy.x - rectangle.y.x);
+    float origo_to_y = std::abs(rectangle.y.y - rectangle.origo.y);
+
+    const int tolerance_factor = 20;
+    float x_tolerance = origo_to_x / tolerance_factor;
+    float y_tolerance = origo_to_y / tolerance_factor;
+
+    return (std::abs(origo_to_x - y_to_xy) < x_tolerance) && (std::abs(origo_to_y - x_to_xy) < y_tolerance);
+
+}
+
+bool closer_rect_origo(const Point current_point, const Point &new_point) {
+    float current_sum = current_point.x + current_point.y;
+    float new_sum = new_point.x + new_point.y;
+    return new_sum < current_sum;
+}
+
+bool closer_rect_x(const Point current_point, const Point &new_point) {
+    float current_sum = current_point.x - current_point.y;
+    float new_sum = new_point.x - new_point.y;
+    return new_sum > current_sum;
+}
+
+bool closer_rect_y(const Point current_point, const Point &new_point) {
+    float current_sum = current_point.y - current_point.x;
+    float new_sum = new_point.y - new_point.x;
+    return new_sum > current_sum;
+}
+
+bool closer_rect_xy(const Point current_point, const Point &new_point) {
+    float current_sum = current_point.x + current_point.y;
+    float new_sum = new_point.x + new_point.y;
+    return new_sum > current_sum;
+}
+
+void set_rectangle_corners(Rectangle &rectangle) {
+
+    Cloud point_cloud = *rectangle.point_cloud_ptr;
+    rectangle.origo = point_cloud.points[0];
+    rectangle.x = point_cloud.points[0];
+    rectangle.y = point_cloud.points[0];
+    rectangle.xy = point_cloud.points[0];
+
+    for (int i = 1; i < point_cloud.size(); i++){
+
+        Point current_point = point_cloud.points[i];
+
+        if (closer_rect_origo(rectangle.origo, current_point)) {
+            rectangle.origo = current_point;
+        }
+
+        if (closer_rect_x(rectangle.x, current_point)) {
+            rectangle.x = current_point;
+        }
+
+        if (closer_rect_y(rectangle.y, current_point)) {
+            rectangle.y = current_point;
+        }
+
+        if (closer_rect_xy(rectangle.xy, current_point)) {
+            rectangle.xy = current_point;
+        }
+    }
+}
 
 void filter(const CloudPtr before, CloudPtr after) {
     CloudPtr temp_cloud_ptr = before;
@@ -144,65 +220,97 @@ get_start_angle(ros::ServiceClient client, const unsigned int times_to_scan)
     return optimal_angle;
 }
 
-/**
-    This function will call the treed_wrapper node to generate scans.
-    Every scan will be stored as an scanData object which consist of angles of the board and the point cloud. 
-    @param accuracy This will set the precision on the scan, in other words, how many times to scan.
-    @param scans The vector to store all scanData objects in.
-    @return true if success, false otherwise.
-*/
-bool
-generate_scans(uint16 accuracy, std::vector<scanData> &scans)
-{
-    // Constant number for the degrees of the rotation board.
-    degrees y_min = 0;
-    degrees y_max = 359;
-    degrees x_min = -20;
-    degrees x_max = 90;
-    
-    // Define how many degrees to rotate every time.
-    degrees y_rotate = 100 / accuracy;
-    degrees x_rotate = 90 / accuracy;
-
-    // Define how many times to scan in both y and x directions.
-    double times_to_scan_x = std::floor((x_max - x_min) / x_rotate);
-    double times_to_scan_y = std::floor((y_max - y_min) / y_rotate);
-    
-    // Define the angles for y and x axis.
-    degrees y_angle;
-    degrees x_angle = x_min;
-    
-    // Define the client that will be used to call the wrapper_scan service. 
-    ros::NodeHandle node_handle;
-    ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
-    
-    // For every angle in x, rotate the board on every angle on the y axis.    
-    for (int i = 0; i < times_to_scan_x; ++i) {
-        y_angle = y_min;
-        for (int j = 0; j < times_to_scan_y; ++j) {
-            y_angle = y_angle + y_rotate;
-            
-            // Setup the scan service and request the service to set the angles.
-            ScanService srv;
-            srv.request.y_angle = y_angle;
-            srv.request.x_angle = x_angle;
-            
-            // Call the ScanService (wrapper), it will return true if service call succeeded, it will return false if the call not succeed.
-            // It will also check if the exit_code is valid (return 0).
-            if (client.call(srv) && !srv.response.exit_code) {
-                scanData scan_data;
-                scan_data.y_angle = y_angle;
-                scan_data.x_angle = x_angle;
-                scan_data.point_cloud_message = srv.response.point_cloud;
-                scans.push_back(scan_data);
-            } else {
-                return false;
+std::vector<Rectangle> scan(ros::ServiceClient client, const unsigned int accuracy) {
+    degrees start = get_start_angle(client, accuracy);
+    std::cout << "start at angle: " << start << std::endl;
+    // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
+    std::vector<Rectangle> scans;
+    ScanService srv;
+    degrees x_angle = 0;
+    degrees y_angle = 0;
+    srv.request.x_angle = x_angle;
+    for (int i=0; i < 4; i++) {
+        y_angle = start + i*90;
+        srv.request.y_angle = y_angle;
+        if (client.call(srv) && !srv.response.exit_code) {
+            Rectangle scan;
+            CloudPtr cloud_to_save_ptr (new Cloud());
+            CloudPtr cloud_temp_ptr (new Cloud());
+            scan.pov_angle = y_angle;
+            message_to_cloud(srv.response.point_cloud, cloud_temp_ptr);
+            filter(cloud_temp_ptr, cloud_to_save_ptr);
+            scan.point_cloud_ptr = cloud_to_save_ptr;
+            set_rectangle_corners(scan);
+            if (!is_rectangle(scan)) {
+                throw 2; // It's no rectangle
             }
+            scans.push_back(scan);
+
+        } else {
+            throw 1; // request to treedwrapper failed.
         }
-        x_angle = x_angle + x_rotate;
     }
-    return true;
+    return scans;
 }
+
+Cuboid generate_cuboid(const millimeter width, const millimeter height, const millimeter depth) {
+
+    millimeter step_size = 0.1;
+    CloudPtr point_cloud_ptr (new Cloud());
+    Cuboid cuboid;
+
+    // Create two xy planes in the xzy space.
+    for (millimeter i=0; i<width; i+=step_size) {
+
+        for (millimeter j=0; j<height; j+=step_size) {
+            //Add one point for each side of the cube
+            Point point1 = Point(i, j, 0);
+            Point point2 = Point(i, j, depth);
+            point_cloud_ptr->push_back(point1);
+            point_cloud_ptr->push_back(point2);
+        }
+
+    }
+
+    // Create two yz planes in the xyz space.
+    for (millimeter i=0; i<depth; i+=step_size) {
+
+        for (millimeter j=0; j<height; j+=step_size) {
+            Point point1 = Point(0, j, i);
+            Point point2 = Point(width, j, i);
+            point_cloud_ptr->push_back(point1);
+            point_cloud_ptr->push_back(point2);
+        }
+
+    }
+
+    // Create two xz planes in the xyz space.
+    for (millimeter i=0; i<depth; i+=step_size) {
+
+        for (millimeter j=0; j<width; j+=step_size) {
+            Point point1 = Point(j, 0, i);
+            Point point2 = Point(j, height, i);
+            point_cloud_ptr->push_back(point1);
+            point_cloud_ptr->push_back(point2);
+        }
+
+    }
+
+    cuboid.point_cloud_ptr = point_cloud_ptr;
+    cuboid.pov_angle = 0;
+    cuboid.origo = Point(0, 0, 0);
+    cuboid.x = Point(width, 0, 0);
+    cuboid.y = Point(0, height, 0);
+    cuboid.z = Point(0, 0, depth);
+    cuboid.xy = Point(width, height, 0);
+    cuboid.xz = Point(width, 0, depth);
+    cuboid.yz = Point(0, height, depth);
+    cuboid.xyz = Point(width, height, depth);
+
+    return cuboid;
+
+}
+
 
 /**
     This function will scan an object and register all the point clouds to a resulting point cloud.
@@ -216,34 +324,33 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
 
     ros::NodeHandle node_handle;
     ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
-    degrees start = get_start_angle(client, req.accuracy);
-    std::cout << "start at angle: " << start << std::endl;
-    // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
-    std::vector<scanData> scans;
-    ScanService srv;
-    degrees x_angle = 0;
-    degrees y_angle = 0;
-    srv.request.x_angle = x_angle;
-    for (int i=0; i < 4; i++) {
-        y_angle = start + i*90;
-        srv.request.y_angle = y_angle;
-        if (client.call(srv) && !srv.response.exit_code) {
-            scanData scan_data;
-            CloudPtr cloud_to_save_ptr (new Cloud());
-            CloudPtr cloud_temp_ptr (new Cloud());
-            scan_data.y_angle = y_angle;
-            scan_data.x_angle = x_angle;
-            scan_data.point_cloud_message = srv.response.point_cloud;
-            scans.push_back(scan_data);
-            message_to_cloud(srv.response.point_cloud, cloud_temp_ptr);
-            filter(cloud_temp_ptr, cloud_to_save_ptr);
-            pcl::io::savePCDFile("scan_" + SSTR(i) + ".pcd",*cloud_to_save_ptr);
+    std::vector<Rectangle> scans;
 
-        } else {
-            resp.exit_code = 1;
-            resp.error_message = "Failed to call service wrapper_scan";
+    try {
+        scans = scan(client, req.accuracy);
+    } catch (short e) {
+        switch (e) {
+            case 1:
+                resp.error_message = "Failed to call service wrapper_scan";
+                break;
+            case 2:
+                resp.error_message = "Not a rectangle";
+                break;
+            default:
+                resp.error_message = "Unknown error";
         }
+        resp.exit_code = 1;
+        return false;
     }
+
+    millimeter width = std::abs(scans[0].x.x - scans[0].origo.x);
+    millimeter height = std::abs(scans[0].y.y - scans[0].origo.y);
+    millimeter depth = std::abs(scans[1].x.x - scans[1].origo.x);
+    Cuboid cuboid = generate_cuboid(width, height, depth);
+
+    for (int i)
+
+    pcl::io::savePCDFile("cuboid.pcd", *cuboid.point_cloud_ptr);
 
     return true;
 }
