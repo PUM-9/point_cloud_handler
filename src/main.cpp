@@ -15,6 +15,11 @@
 #include <pcl/filters/radius_outlier_removal.h>
 #include <string>
 
+#include <sstream>
+
+#define SSTR( x ) static_cast< std::ostringstream & >( \
+        ( std::ostringstream() << std::dec << x ) ).str()
+
 typedef sensor_msgs::PointCloud2 PointCloudMessage;
 typedef treedwrapper::WrapperScan ScanService;
 typedef point_cloud_handler::GetPointCloud GetPointCloud;
@@ -99,14 +104,13 @@ message_to_cloud(const PointCloudMessage &message, CloudPtr cloud) {
 }
 
 degrees
-get_start_angle(ros::ServiceClient client)
+get_start_angle(ros::ServiceClient client, const unsigned int times_to_scan)
 {
     CloudPtr current_cloud_ptr (new Cloud());
     CloudPtr optimal_cloud_ptr (new Cloud());
     CloudPtr temp_cloud_ptr (new Cloud());
     degrees optimal_angle;
     float optimal_depth;
-    const unsigned int times_to_scan = 5;
     degrees rotation = 90/times_to_scan;
     bool first = true;
 
@@ -209,9 +213,10 @@ generate_scans(uint16 accuracy, std::vector<scanData> &scans)
 bool 
 get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
 {
+
     ros::NodeHandle node_handle;
     ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
-    degrees start = 0; //get_start_angle(client);
+    degrees start = get_start_angle(client, req.accuracy);
     std::cout << "start at angle: " << start << std::endl;
     // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
     std::vector<scanData> scans;
@@ -224,13 +229,15 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
         srv.request.y_angle = y_angle;
         if (client.call(srv) && !srv.response.exit_code) {
             scanData scan_data;
-            CloudPtr cloud_to_save_ptr;
+            CloudPtr cloud_to_save_ptr (new Cloud());
+            CloudPtr cloud_temp_ptr (new Cloud());
             scan_data.y_angle = y_angle;
             scan_data.x_angle = x_angle;
             scan_data.point_cloud_message = srv.response.point_cloud;
             scans.push_back(scan_data);
-            message_to_cloud(srv.response.point_cloud, cloud_to_save_ptr);
-            pcl::io::savePCDFile("scan_" + std::to_string(i),*cloud_to_save_ptr);
+            message_to_cloud(srv.response.point_cloud, cloud_temp_ptr);
+            filter(cloud_temp_ptr, cloud_to_save_ptr);
+            pcl::io::savePCDFile("scan_" + SSTR(i) + ".pcd",*cloud_to_save_ptr);
 
         } else {
             resp.exit_code = 1;
