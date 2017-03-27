@@ -6,6 +6,7 @@
 #include "ros/ros.h"
 #include "point_cloud_handler/GetPointCloud.h"
 #include "treedwrapper/WrapperScan.h"
+#include "filter.cpp"
 
 typedef sensor_msgs::PointCloud2 PointCloudMessage;
 typedef treedwrapper::WrapperScan ScanService;
