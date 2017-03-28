@@ -5,6 +5,7 @@
 #include <vector>
 #include "ros/ros.h"
 #include "point_cloud_handler/GetPointCloud.h"
+#include "point_cloud_handler/TestScan.h"
 #include "treedwrapper/WrapperScan.h"
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_types.h>
@@ -23,6 +24,7 @@
 typedef sensor_msgs::PointCloud2 PointCloudMessage;
 typedef treedwrapper::WrapperScan ScanService;
 typedef point_cloud_handler::GetPointCloud GetPointCloud;
+typedef point_cloud_handler::TestScan TestScan;
 typedef int degrees;
 typedef unsigned short int uint16;
 typedef float millimeter;
@@ -101,6 +103,103 @@ bool is_rectangle(const Rectangle &rectangle) {
 
 }
 
+bool closer_cuboid_origo(const Point current_point, const Point &new_point) {
+    float current_sum = current_point.x + current_point.y + current_point.z;
+    float new_sum = new_point.x + new_point.y + new_point.z;
+    return new_sum < current_sum;
+}
+
+bool closer_cuboid_x(const Point current_point, const Point &new_point) {
+    float current_sum = current_point.x - current_point.y - current_point.z;
+    float new_sum = new_point.x - new_point.y - new_point.z;
+    return new_sum > current_sum;
+}
+
+bool closer_cuboid_y(const Point current_point, const Point &new_point) {
+    float current_sum = current_point.y - current_point.x - current_point.z;
+    float new_sum = new_point.y - new_point.x - new_point.z;
+    return new_sum > current_sum;
+}
+
+bool closer_cuboid_z(const Point current_point, const Point &new_point) {
+    float current_sum = current_point.z - current_point.y - current_point.x;
+    float new_sum = new_point.z - new_point.y - new_point.x;
+    return new_sum > current_sum;
+}
+
+bool closer_cuboid_xyz(const Point current_point, const Point &new_point) {
+    float current_sum = current_point.x + current_point.y + current_point.z;
+    float new_sum = new_point.x + new_point.y + new_point.z;
+    return new_sum > current_sum;
+}
+
+bool closer_cuboid_yz(const Point current_point, const Point &new_point) {
+    float current_sum = current_point.y + current_point.z - current_point.x;
+    float new_sum = new_point.y + new_point.z - new_point.x;
+    return new_sum > current_sum;
+}
+
+bool closer_cuboid_xy(const Point current_point, const Point &new_point) {
+    float current_sum = current_point.x + current_point.y - current_point.z;
+    float new_sum = new_point.x + new_point.y - new_point.z;
+    return new_sum > current_sum;
+}
+
+bool closer_cuboid_xz(const Point current_point, const Point &new_point) {
+    float current_sum = current_point.x - current_point.y + current_point.z;
+    float new_sum = new_point.x - new_point.y + new_point.z;
+    return new_sum > current_sum;
+}
+
+void set_cuboid_corners(Cuboid cuboid) {
+    cuboid.origo = cuboid.point_cloud_ptr->points[0];
+    cuboid.x = cuboid.point_cloud_ptr->points[0];
+    cuboid.y = cuboid.point_cloud_ptr->points[0];
+    cuboid.z = cuboid.point_cloud_ptr->points[0];
+    cuboid.xy = cuboid.point_cloud_ptr->points[0];
+    cuboid.yz = cuboid.point_cloud_ptr->points[0];
+    cuboid.xz = cuboid.point_cloud_ptr->points[0];
+    cuboid.xyz = cuboid.point_cloud_ptr->points[0];
+    for (int i = 1; i < cuboid.point_cloud_ptr->size(); i++) {
+
+        Point current_point = cuboid.point_cloud_ptr->points[i];;
+
+        if (closer_cuboid_origo(cuboid.origo, current_point)) {
+            cuboid.origo = current_point;
+        }
+
+        if (closer_cuboid_x(cuboid.x, current_point)) {
+            cuboid.x = current_point;
+        }
+
+        if (closer_cuboid_y(cuboid.y, current_point)) {
+            cuboid.y = current_point;
+        }
+
+        if (closer_cuboid_z(cuboid.z, current_point)) {
+            cuboid.z = current_point;
+        }
+
+        if (closer_cuboid_xy(cuboid.xy, current_point)) {
+            cuboid.xy = current_point;
+        }
+
+        if (closer_cuboid_xz(cuboid.xz, current_point)) {
+            cuboid.xz = current_point;
+        }
+
+        if (closer_cuboid_yz(cuboid.yz, current_point)) {
+            cuboid.yz = current_point;
+        }
+
+        if (closer_cuboid_xyz(cuboid.xyz, current_point)) {
+            cuboid.xyz = current_point;
+        }
+
+    }
+
+}
+
 bool closer_rect_origo(const Point current_point, const Point &new_point) {
     float current_sum = current_point.x + current_point.y;
     float new_sum = new_point.x + new_point.y;
@@ -155,10 +254,11 @@ void set_rectangle_corners(Rectangle &rectangle) {
     }
 }
 
-void filter(const CloudPtr before, CloudPtr after) {
+
+void
+filter(const CloudPtr before, CloudPtr after, int i) {
     CloudPtr temp_cloud_ptr = before;
     pcl::PassThrough<Point> pass;
-
 
     // Filter out stick
     pass.setInputCloud(temp_cloud_ptr);
@@ -183,8 +283,79 @@ void filter(const CloudPtr before, CloudPtr after) {
     outlier_filter.setRadiusSearch(0.8);
     outlier_filter.setMinNeighborsInRadius(2);
     outlier_filter.filter(*after);
-
 }
+
+/**
+   This function filters a cloud by performing a few steps:
+   * It removes all noise data and outliers
+   * It scales the cloud to the correct proportions
+   * It makes sure the cloud has the correct rotation and position around origin
+   @param cloud_in The input cloud, taken directly from a TreeD scan.
+   @param cloud_out The filtered and scaled cloud is returned here.
+   @param rotation The rotation the scan was taken from (in degrees).
+ */
+
+void
+filter_new(CloudPtr cloud_in, CloudPtr cloud_out, int rotation)
+{
+   // Use a pass through filter to remove all points outside of specific coordinates
+   pcl::PassThrough<pcl::PointXYZ> pt_filter;
+   pt_filter.setInputCloud(cloud_in);
+
+   // Filter on the x axis
+   // This will remove the stick the object is attached to
+   pt_filter.setFilterFieldName("x");
+   pt_filter.setFilterLimits(100, 528);
+   pt_filter.setFilterLimitsNegative(true);
+   pt_filter.filter(*cloud_out);
+
+   // Filter on the z axis to remove the plane of noise data in the
+   // beginning of the scan
+   pt_filter.setInputCloud(cloud_out);
+   pt_filter.setFilterFieldName("z");
+   pt_filter.setFilterLimits(-1, 1);
+   pt_filter.setFilterLimitsNegative(true);
+   pt_filter.filter(*cloud_out);
+
+   // Filter on the y axis
+   pt_filter.setInputCloud(cloud_out);
+   pt_filter.setFilterFieldName("y");
+   pt_filter.setFilterLimits(200, 380);
+   pt_filter.setFilterLimitsNegative(false);
+   pt_filter.filter(*cloud_out);
+
+   // Remove points that are far away from other points
+   pcl::RadiusOutlierRemoval<pcl::PointXYZ> outlier_filter;
+   outlier_filter.setInputCloud(cloud_out);
+   outlier_filter.setRadiusSearch(0.8);
+   outlier_filter.setMinNeighborsInRadius(2);
+   outlier_filter.filter(*cloud_out);
+
+
+   // Translate the object to move the center of the object to the origin (approximately).
+   // This works but should be done in a better way. Right now these values
+   // will be wrong if the scanner hardware is moved.
+   Eigen::Affine3f translation_transform(Eigen::Affine3f::Identity());
+   translation_transform.translation() << -528.0, -346.0, 591.0;
+   pcl::transformPointCloud(*cloud_out, *cloud_out, translation_transform);
+
+   // Scale the point cloud by half to make it the correct proportions.
+   // The scaling factor 0.5 assumes the scans are run with cart speed 200 mm/s.
+   float scale = 0.5;
+   Eigen::Affine3f scale_transform(Eigen::Affine3f::Identity());
+   scale_transform.scale(Eigen::Vector3f(1, 1, scale));
+   pcl::transformPointCloud(*cloud_out, *cloud_out, scale_transform);
+
+   // Rotate the object around the x axis to match the objects real world rotation
+   Eigen::Matrix3f rotation_matrix(Eigen::AngleAxisf((rotation*M_PI) / 180, Eigen::Vector3f::UnitX()));
+   Eigen::Affine3f rotation_transform(Eigen::Affine3f::Identity());
+   rotation_transform.rotate(rotation_matrix);
+   pcl::transformPointCloud(*cloud_out, *cloud_out, rotation_transform);
+
+   return;
+}
+
+
 
 void
 message_to_cloud(const PointCloudMessage &message, CloudPtr cloud) {
@@ -219,7 +390,7 @@ get_start_angle(ros::ServiceClient client, const unsigned int times_to_scan)
 
             message_to_cloud(msg, temp_cloud_ptr);
 
-            filter(temp_cloud_ptr, current_cloud_ptr);
+            filter(temp_cloud_ptr, current_cloud_ptr, v);
 
             float current_depth = find_depth(current_cloud_ptr);
             std::cout << "current depth" << current_depth << std::endl;
@@ -236,7 +407,8 @@ get_start_angle(ros::ServiceClient client, const unsigned int times_to_scan)
     return optimal_angle;
 }
 
-std::vector<Rectangle> scan(ros::ServiceClient client, const unsigned int accuracy) throw() {
+std::vector<Rectangle>
+scan(ros::ServiceClient client, const unsigned int accuracy) throw() {
     degrees start = get_start_angle(client, accuracy);
     std::cout << "start at angle: " << start << std::endl;
     // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
@@ -254,22 +426,23 @@ std::vector<Rectangle> scan(ros::ServiceClient client, const unsigned int accura
             CloudPtr cloud_temp_ptr (new Cloud());
             scan.pov_angle = y_angle;
             message_to_cloud(srv.response.point_cloud, cloud_temp_ptr);
-            filter(cloud_temp_ptr, cloud_to_save_ptr);
+            filter(cloud_temp_ptr, cloud_to_save_ptr, y_angle);
             scan.point_cloud_ptr = cloud_to_save_ptr;
             set_rectangle_corners(scan);
             if (!is_rectangle(scan)) {
-                throw 2; // It's no rectangle
+              //  throw 2; // It's no rectangle
             }
             scans.push_back(scan);
 
         } else {
-            throw 1; // request to treedwrapper failed.
+                throw 1; // request to treedwrapper failed.
         }
     }
     return scans;
 }
 
-Cuboid generate_cuboid(const millimeter width, const millimeter height, const millimeter depth) {
+Cuboid
+generate_cuboid(const millimeter width, const millimeter height, const millimeter depth) {
 
     millimeter step_size = 0.1;
     CloudPtr point_cloud_ptr (new Cloud());
@@ -364,9 +537,12 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
     millimeter width = std::abs(scans[0].x.x - scans[0].origo.x);
     millimeter height = std::abs(scans[0].y.y - scans[0].origo.y);
     millimeter depth = std::abs(scans[1].x.x - scans[1].origo.x);
-    std::cout << "0x: " << scans[0].x << "0y: " << scans[0].y <<  "0origo: " << scans[0].origo << std::endl;
-    std::cout << "1x: " << scans[1].x << "1y: " << scans[1].y << "1origo: " << scans[1].origo  << std::endl;
+    cout << "w: " << width << " h: " << height << " d: " << depth << endl;
+    std::cout << "0x: " << scans[0].x << " 0y: " << scans[0].y <<  " 0origo: " << scans[0].origo << std::endl;
+    std::cout << "1x: " << scans[1].x << " 1y: " << scans[1].y << " 1origo: " << scans[1].origo  << std::endl;
     Cuboid cuboid = generate_cuboid(width, height, depth);
+    std::cout << "co: " << cuboid.origo << " cx: " << cuboid.x << " cy: " << cuboid.y << " cz: " << cuboid.z << endl;
+
 
     for (int i = 0; i < scans.size(); i++){
         pcl::io::savePCDFile("rect_" + SSTR(i) + ".pcd", *scans[i].point_cloud_ptr);
@@ -377,6 +553,26 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
     return true;
 }
 
+bool
+test_scan(TestScan::Request &req, TestScan::Response &resp)
+{
+    ros::NodeHandle node_handle;
+    ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
+    ScanService srv;
+
+    CloudPtr cloud_to_save_ptr (new Cloud());
+    CloudPtr cloud_temp_ptr (new Cloud());
+
+    srv.request.x_angle = 0;
+    srv.request.y_angle = 0;
+
+    if (client.call(srv) && !srv.response.exit_code){
+        message_to_cloud(srv.response.point_cloud, cloud_temp_ptr);
+        filter(cloud_temp_ptr, cloud_to_save_ptr, 0);
+        pcl::io::savePCDFile(req.filename, *cloud_to_save_ptr);
+    }
+    return true;
+}
 
 /**
     Main function that will init a ros node and spin up the get_point_cloud service. 
@@ -391,6 +587,10 @@ main (int argc, char** argv)
     ros::NodeHandle node_handle;
     ros::ServiceServer service = node_handle.advertiseService("get_point_cloud", get_point_cloud);
     ROS_INFO("Ready to serve point clouds");
+
+    ros::ServiceServer testService = node_handle.advertiseService("test_scan", test_scan);
+    ROS_INFO("Ready to start a test scan");
+
     ros::spin();
     return (0);
 }
