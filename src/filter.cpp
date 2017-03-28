@@ -38,7 +38,7 @@ filter(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in,
     // Filter on the y axis
     pt_filter.setInputCloud(cloud_out);
     pt_filter.setFilterFieldName("y");
-    pt_filter.setFilterLimits(200, 380);
+    pt_filter.setFilterLimits(100, 580);
     pt_filter.setFilterLimitsNegative(false);
     pt_filter.filter(*cloud_out);
 
