@@ -520,9 +520,8 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
 
     for (int i = 0; i < scans.size(); i++){
         std::stringstream ss;
-        std::string i_str;
+        ss << "rect_" << i << ".pcd";
         std::string filename = ss.str();
-        std::cout << filename << std::endl;
         pcl::io::savePCDFile(filename, *scans.at(i).point_cloud_ptr);
     }
     pcl::io::savePCDFile("cuboid.pcd", *cuboid.point_cloud_ptr);
