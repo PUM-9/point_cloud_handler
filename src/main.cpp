@@ -18,9 +18,6 @@
 #include <sstream>
 #include <exception>
 
-#define SSTR( x ) static_cast< std::ostringstream & >( \
-        ( std::ostringstream() << std::dec << x ) ).str()
-
 typedef sensor_msgs::PointCloud2 PointCloudMessage;
 typedef treedwrapper::WrapperScan ScanService;
 typedef point_cloud_handler::GetPointCloud GetPointCloud;
@@ -34,19 +31,10 @@ typedef pcl::PointXYZ Point;
 typedef pcl::PointCloud<Point> Cloud;
 typedef Cloud::Ptr CloudPtr;
 
-using namespace std;
+
 /**
     Struct that will be used to store the point clouds as an object.
 */
-
-class myexception: public exception
-{
-    virtual const char* what() const throw()
-    {
-        return "My exception happened";
-    }
-} myex;
-
 struct Cuboid {
     CloudPtr point_cloud_ptr;
     degrees pov_angle;
@@ -56,31 +44,31 @@ struct Cuboid {
 struct Rectangle {
     CloudPtr point_cloud_ptr;
     degrees pov_angle;
-    Point origo, x, y, xy;
+    Point origo, x, z, xz;
 };
 
 
 
 float find_depth(CloudPtr cloud) {
 
-    float biggest_z = cloud->points[0].z;
-    float smallest_z = biggest_z;
+    float biggest_y = cloud->points[0].y;
+    float smallest_y = biggest_y;
 
     for (int i=1; i < cloud->size(); i++) {
 
-        float current_z = cloud->points[i].z;
+        float current_y = cloud->points[i].y;
 
-        if (current_z > biggest_z) {
-            biggest_z = current_z;
+        if (current_y > biggest_y) {
+            biggest_y = current_y;
         }
 
-        if (current_z < smallest_z) {
-            smallest_z = current_z;
+        if (current_y < smallest_y) {
+            smallest_y = current_y;
         }
 
     }
 
-    return biggest_z - smallest_z;
+    return biggest_y - smallest_y;
 
 }
 
@@ -88,18 +76,18 @@ bool is_rectangle(const Rectangle &rectangle) {
 
 
     float origo_to_x = std::abs(rectangle.x.x - rectangle.origo.x);
-    float x_to_xy = std::abs(rectangle.xy.y - rectangle.x.y);
-    float y_to_xy = std::abs(rectangle.xy.x - rectangle.y.x);
-    float origo_to_y = std::abs(rectangle.y.y - rectangle.origo.y);
+    float x_to_xz = std::abs(rectangle.xz.z - rectangle.x.z);
+    float z_to_xz = std::abs(rectangle.xz.x - rectangle.z.x);
+    float origo_to_z = std::abs(rectangle.z.z - rectangle.origo.z);
 
-    const int tolerance_factor = 5;
+    const int tolerance_factor = 10;
     float x_tolerance = origo_to_x / tolerance_factor;
-    float y_tolerance = origo_to_y / tolerance_factor;
+    float z_tolerance = origo_to_z / tolerance_factor;
 
-    std::cout << "origo -> x: " << origo_to_x << " x->xy: " << x_to_xy << " y->xy: " << y_to_xy << " o->y: " << origo_to_y << endl;
-    std::cout << "x tol: " << x_tolerance << " y tol: " << y_tolerance << endl;
+    std::cout << "origo->x: " << origo_to_x << " x->xz: " << x_to_xz << " z->xz: " << z_to_xz << " o->y: " << origo_to_z << std::endl;
+    std::cout << "x tol: " << x_tolerance << " z tol: " << z_tolerance << std::endl;
 
-    return (std::abs(origo_to_x - y_to_xy) < x_tolerance) && (std::abs(origo_to_y - x_to_xy) < y_tolerance);
+    return (std::abs(origo_to_x - z_to_xz) < x_tolerance) && (std::abs(origo_to_z - x_to_xz) < z_tolerance);
 
 }
 
@@ -201,26 +189,26 @@ void set_cuboid_corners(Cuboid cuboid) {
 }
 
 bool closer_rect_origo(const Point current_point, const Point &new_point) {
-    float current_sum = current_point.x + current_point.y;
-    float new_sum = new_point.x + new_point.y;
+    float current_sum = current_point.x + current_point.z;
+    float new_sum = new_point.x + new_point.z;
     return new_sum < current_sum;
 }
 
 bool closer_rect_x(const Point current_point, const Point &new_point) {
-    float current_sum = current_point.x - current_point.y;
-    float new_sum = new_point.x - new_point.y;
+    float current_sum = current_point.x - current_point.z;
+    float new_sum = new_point.x - new_point.z;
     return new_sum > current_sum;
 }
 
-bool closer_rect_y(const Point current_point, const Point &new_point) {
-    float current_sum = current_point.y - current_point.x;
-    float new_sum = new_point.y - new_point.x;
+bool closer_rect_z(const Point current_point, const Point &new_point) {
+    float current_sum = current_point.z - current_point.x;
+    float new_sum = new_point.z - new_point.x;
     return new_sum > current_sum;
 }
 
-bool closer_rect_xy(const Point current_point, const Point &new_point) {
-    float current_sum = current_point.x + current_point.y;
-    float new_sum = new_point.x + new_point.y;
+bool closer_rect_xz(const Point current_point, const Point &new_point) {
+    float current_sum = current_point.x + current_point.z;
+    float new_sum = new_point.x + new_point.z;
     return new_sum > current_sum;
 }
 
@@ -229,8 +217,8 @@ void set_rectangle_corners(Rectangle &rectangle) {
     Cloud point_cloud = *rectangle.point_cloud_ptr;
     rectangle.origo = point_cloud.points[0];
     rectangle.x = point_cloud.points[0];
-    rectangle.y = point_cloud.points[0];
-    rectangle.xy = point_cloud.points[0];
+    rectangle.z = point_cloud.points[0];
+    rectangle.xz = point_cloud.points[0];
 
     for (int i = 1; i < point_cloud.size(); i++){
 
@@ -244,45 +232,14 @@ void set_rectangle_corners(Rectangle &rectangle) {
             rectangle.x = current_point;
         }
 
-        if (closer_rect_y(rectangle.y, current_point)) {
-            rectangle.y = current_point;
+        if (closer_rect_z(rectangle.z, current_point)) {
+            rectangle.z = current_point;
         }
 
-        if (closer_rect_xy(rectangle.xy, current_point)) {
-            rectangle.xy = current_point;
+        if (closer_rect_xz(rectangle.xz, current_point)) {
+            rectangle.xz = current_point;
         }
     }
-}
-
-
-void
-filter(const CloudPtr before, CloudPtr after, int i) {
-    CloudPtr temp_cloud_ptr = before;
-    pcl::PassThrough<Point> pass;
-
-    // Filter out stick
-    pass.setInputCloud(temp_cloud_ptr);
-    pass.setFilterFieldName("x");
-    pass.setFilterLimits(400, 513);
-    pass.setFilterLimitsNegative(false);
-    pass.filter(*after);
-
-    temp_cloud_ptr = after;
-
-    pass.setInputCloud(temp_cloud_ptr);
-    pass.setFilterFieldName("y");
-    pass.setFilterLimits(-1, 1);
-    pass.setFilterLimitsNegative(true);
-    pass.filter(*after);
-
-    temp_cloud_ptr = after;
-
-    // Remove points that are far away from one another.
-    pcl::RadiusOutlierRemoval<pcl::PointXYZ> outlier_filter;
-    outlier_filter.setInputCloud(temp_cloud_ptr);
-    outlier_filter.setRadiusSearch(0.8);
-    outlier_filter.setMinNeighborsInRadius(2);
-    outlier_filter.filter(*after);
 }
 
 /**
@@ -296,7 +253,7 @@ filter(const CloudPtr before, CloudPtr after, int i) {
  */
 
 void
-filter_new(CloudPtr cloud_in, CloudPtr cloud_out, int rotation)
+filter(CloudPtr cloud_in, CloudPtr cloud_out)
 {
    // Use a pass through filter to remove all points outside of specific coordinates
    pcl::PassThrough<pcl::PointXYZ> pt_filter;
@@ -305,8 +262,8 @@ filter_new(CloudPtr cloud_in, CloudPtr cloud_out, int rotation)
    // Filter on the x axis
    // This will remove the stick the object is attached to
    pt_filter.setFilterFieldName("x");
-   pt_filter.setFilterLimits(100, 528);
-   pt_filter.setFilterLimitsNegative(true);
+   pt_filter.setFilterLimits(100, 511);
+   pt_filter.setFilterLimitsNegative(false);
    pt_filter.filter(*cloud_out);
 
    // Filter on the z axis to remove the plane of noise data in the
@@ -320,7 +277,7 @@ filter_new(CloudPtr cloud_in, CloudPtr cloud_out, int rotation)
    // Filter on the y axis
    pt_filter.setInputCloud(cloud_out);
    pt_filter.setFilterFieldName("y");
-   pt_filter.setFilterLimits(200, 380);
+   pt_filter.setFilterLimits(100, 580);
    pt_filter.setFilterLimitsNegative(false);
    pt_filter.filter(*cloud_out);
 
@@ -345,12 +302,6 @@ filter_new(CloudPtr cloud_in, CloudPtr cloud_out, int rotation)
    Eigen::Affine3f scale_transform(Eigen::Affine3f::Identity());
    scale_transform.scale(Eigen::Vector3f(1, 1, scale));
    pcl::transformPointCloud(*cloud_out, *cloud_out, scale_transform);
-
-   // Rotate the object around the x axis to match the objects real world rotation
-   Eigen::Matrix3f rotation_matrix(Eigen::AngleAxisf((rotation*M_PI) / 180, Eigen::Vector3f::UnitX()));
-   Eigen::Affine3f rotation_transform(Eigen::Affine3f::Identity());
-   rotation_transform.rotate(rotation_matrix);
-   pcl::transformPointCloud(*cloud_out, *cloud_out, rotation_transform);
 
    return;
 }
@@ -390,7 +341,7 @@ get_start_angle(ros::ServiceClient client, const unsigned int times_to_scan)
 
             message_to_cloud(msg, temp_cloud_ptr);
 
-            filter(temp_cloud_ptr, current_cloud_ptr, v);
+            filter(temp_cloud_ptr, current_cloud_ptr);
 
             float current_depth = find_depth(current_cloud_ptr);
             std::cout << "current depth" << current_depth << std::endl;
@@ -407,8 +358,36 @@ get_start_angle(ros::ServiceClient client, const unsigned int times_to_scan)
     return optimal_angle;
 }
 
+
+Rectangle scan(ros::ServiceClient client, ScanService srv, degrees y_angle) throw(int) {
+    Rectangle rectangle;
+    if (client.call(srv)) {
+        if (!srv.response.exit_code) {
+
+            CloudPtr cloud_to_save_ptr(new Cloud());
+            CloudPtr cloud_temp_ptr(new Cloud());
+            rectangle.pov_angle = y_angle;
+            message_to_cloud(srv.response.point_cloud, cloud_temp_ptr);
+            filter(cloud_temp_ptr, cloud_to_save_ptr);
+            rectangle.point_cloud_ptr = cloud_to_save_ptr;
+            set_rectangle_corners(rectangle);
+
+            if (!is_rectangle(rectangle)) {
+                std::cout << "not a rectangle" << std::endl;
+                throw 1;
+            }
+        } else {
+            std::cout << "Error exit code: " << srv.response.exit_code << std::endl;
+            std::cout << "Error message: " << srv.response.error_message << std::endl;
+            throw 2;
+        }
+
+        return rectangle;
+    }
+}
+
 std::vector<Rectangle>
-scan(ros::ServiceClient client, const unsigned int accuracy) throw() {
+scan_object(ros::ServiceClient client, const unsigned int accuracy) throw (int){
     degrees start = get_start_angle(client, accuracy);
     std::cout << "start at angle: " << start << std::endl;
     // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
@@ -417,27 +396,33 @@ scan(ros::ServiceClient client, const unsigned int accuracy) throw() {
     degrees x_angle = 0;
     degrees y_angle = 0;
     srv.request.x_angle = x_angle;
+    Rectangle rectangle;
+    int max_tries = 3;
+    int tries = 0;
+    bool retry = true;
     for (int i=0; i < 4; i++) {
         y_angle = start + i*90;
         srv.request.y_angle = y_angle;
-        if (client.call(srv) && !srv.response.exit_code) {
-            Rectangle scan;
-            CloudPtr cloud_to_save_ptr (new Cloud());
-            CloudPtr cloud_temp_ptr (new Cloud());
-            scan.pov_angle = y_angle;
-            message_to_cloud(srv.response.point_cloud, cloud_temp_ptr);
-            filter(cloud_temp_ptr, cloud_to_save_ptr, y_angle);
-            scan.point_cloud_ptr = cloud_to_save_ptr;
-            set_rectangle_corners(scan);
-            if (!is_rectangle(scan)) {
-              //  throw 2; // It's no rectangle
+        while (retry && tries < max_tries) {
+            retry = false;
+            try {
+                rectangle = scan(client, srv, y_angle);
+            } catch (int e) {
+                std::cout << "Error " << e << " trying again." << std::endl;
+                retry = true;
+                tries += 1;
             }
-            scans.push_back(scan);
-
-        } else {
-                throw 1; // request to treedwrapper failed.
         }
-    }
+
+        if (tries == max_tries) {
+            std::cout << "Scan failed to many times, abort!" << std::endl;
+            throw 1;
+        }
+        tries = 0;
+        scans.push_back(rectangle);
+
+        }
+
     return scans;
 }
 
@@ -511,64 +496,53 @@ bool
 get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
 {
 
+    std::cout << "get point cloud" << std::endl;
     ros::NodeHandle node_handle;
     ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
     std::vector<Rectangle> scans;
 
     try {
-        scans = scan(client, req.accuracy);
+        scans = scan_object(client, req.accuracy);
     } catch (short e) {
-        switch (e) {
-            case 1:
-                resp.error_message = "Failed to call service wrapper_scan";
-                break;
-            case 2:
-                resp.error_message = "Not a rectangle";
-                break;
-            default:
-                resp.error_message = "Unknown error";
-        }
-
         resp.exit_code = 1;
         return true;
-
     }
 
-    millimeter width = std::abs(scans[0].x.x - scans[0].origo.x);
-    millimeter height = std::abs(scans[0].y.y - scans[0].origo.y);
-    millimeter depth = std::abs(scans[1].x.x - scans[1].origo.x);
-    cout << "w: " << width << " h: " << height << " d: " << depth << endl;
-    std::cout << "0x: " << scans[0].x << " 0y: " << scans[0].y <<  " 0origo: " << scans[0].origo << std::endl;
-    std::cout << "1x: " << scans[1].x << " 1y: " << scans[1].y << " 1origo: " << scans[1].origo  << std::endl;
+    millimeter width = std::abs(scans[0].z.z - scans[0].origo.z);
+    millimeter height = std::abs(scans[0].x.x - scans[0].origo.x);
+    millimeter depth = std::abs(scans[1].z.z - scans[1].origo.z);
+    std::cout << "w: " << width << " h: " << height << " d: " << depth << std::endl;
+    std::cout << "0x: " << scans[0].x << " 0z: " << scans[0].z <<  " 0origo: " << scans[0].origo << std::endl;
+    std::cout << "1x: " << scans[1].x << " 1z: " << scans[1].z << " 1origo: " << scans[1].origo  << std::endl;
     Cuboid cuboid = generate_cuboid(width, height, depth);
-    std::cout << "co: " << cuboid.origo << " cx: " << cuboid.x << " cy: " << cuboid.y << " cz: " << cuboid.z << endl;
+    std::cout << "co: " << cuboid.origo << " cx: " << cuboid.x << " cy: " << cuboid.y << " cz: " << cuboid.z << std::endl;
 
 
     for (int i = 0; i < scans.size(); i++){
-        pcl::io::savePCDFile("rect_" + SSTR(i) + ".pcd", *scans[i].point_cloud_ptr);
+        std::stringstream ss;
+        std::string i_str;
+        std::string filename = ss.str();
+        std::cout << filename << std::endl;
+        pcl::io::savePCDFile(filename, *scans.at(i).point_cloud_ptr);
     }
-
     pcl::io::savePCDFile("cuboid.pcd", *cuboid.point_cloud_ptr);
-
     return true;
 }
 
 bool
 test_scan(TestScan::Request &req, TestScan::Response &resp)
 {
+    std::cout << "test scan" << std::endl;
     ros::NodeHandle node_handle;
     ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
     ScanService srv;
-
     CloudPtr cloud_to_save_ptr (new Cloud());
     CloudPtr cloud_temp_ptr (new Cloud());
-
     srv.request.x_angle = 0;
     srv.request.y_angle = 0;
-
     if (client.call(srv) && !srv.response.exit_code){
         message_to_cloud(srv.response.point_cloud, cloud_temp_ptr);
-        filter(cloud_temp_ptr, cloud_to_save_ptr, 0);
+        filter(cloud_temp_ptr, cloud_to_save_ptr);
         pcl::io::savePCDFile(req.filename, *cloud_to_save_ptr);
     }
     return true;
