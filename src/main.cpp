@@ -84,7 +84,7 @@ bool is_rectangle(const Rectangle &rectangle) {
     float x_tolerance = origo_to_x / tolerance_factor;
     float z_tolerance = origo_to_z / tolerance_factor;
 
-    std::cout << "origo->x: " << origo_to_x << " x->xz: " << x_to_xz << " z->xz: " << z_to_xz << " o->z: " << origo_to_z << std::endl;
+    std::cout << "origo->x: " << origo_to_x << " x->xz: " << x_to_xz << " z->xz: " << z_to_xz << " o->y: " << origo_to_z << std::endl;
     std::cout << "x tol: " << x_tolerance << " z tol: " << z_tolerance << std::endl;
 
     return (std::abs(origo_to_x - z_to_xz) < x_tolerance) && (std::abs(origo_to_z - x_to_xz) < z_tolerance);
@@ -344,7 +344,7 @@ get_start_angle(ros::ServiceClient client, const unsigned int times_to_scan)
             filter(temp_cloud_ptr, current_cloud_ptr);
 
             float current_depth = find_depth(current_cloud_ptr);
-            std::cout << "current depth" << current_depth << std::endl;
+            std::cout << "current depth " << current_depth << std::endl;
             if (first || current_depth < optimal_depth) {
                 std::cout << "new optimal depth " << current_depth << std::endl;
                 std::cout << "new optimal angle " << v << std::endl;
@@ -386,27 +386,27 @@ Rectangle scan(ros::ServiceClient client, ScanService srv, degrees y_angle) thro
     }
 }
 
-std::vector<Rectangle*>
+std::vector<Rectangle>
 scan_object(ros::ServiceClient client, const unsigned int accuracy) throw (int){
     degrees start = get_start_angle(client, accuracy);
     std::cout << "start at angle: " << start << std::endl;
     // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
-    std::vector<Rectangle*> scans;
+    std::vector<Rectangle> scans;
     ScanService srv;
     degrees x_angle = 0;
     degrees y_angle = 0;
     srv.request.x_angle = x_angle;
+    Rectangle rectangle;
     int max_tries = 3;
     int tries = 0;
     bool retry = true;
     for (int i=0; i < 4; i++) {
-        Rectangle* rectangle (new Rectangle());
         y_angle = start + i*90;
         srv.request.y_angle = y_angle;
         while (retry && tries < max_tries) {
             retry = false;
             try {
-                *rectangle = scan(client, srv, y_angle);
+                rectangle = scan(client, srv, y_angle);
             } catch (int e) {
                 std::cout << "Error " << e << " trying again." << std::endl;
                 retry = true;
@@ -499,7 +499,7 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
     std::cout << "get point cloud" << std::endl;
     ros::NodeHandle node_handle;
     ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
-    std::vector<Rectangle*> scans;
+    std::vector<Rectangle> scans;
 
     try {
         scans = scan_object(client, req.accuracy);
@@ -508,12 +508,12 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
         return true;
     }
 
-    millimeter width = std::abs(scans[0]->z.z - scans[0]->origo.z);
-    millimeter height = std::abs(scans[0]->x.x - scans[0]->origo.x);
-    millimeter depth = std::abs(scans[1]->z.z - scans[1]->origo.z);
+    millimeter width = std::abs(scans[0].z.z - scans[0].origo.z);
+    millimeter height = std::abs(scans[0].x.x - scans[0].origo.x);
+    millimeter depth = std::abs(scans[1].z.z - scans[1].origo.z);
     std::cout << "w: " << width << " h: " << height << " d: " << depth << std::endl;
-    std::cout << "0x: " << scans[0]->x << " 0z: " << scans[0]->z <<  " 0origo: " << scans[0]->origo << std::endl;
-    std::cout << "1x: " << scans[1]->x << " 1z: " << scans[1]->z << " 1origo: " << scans[1]->origo  << std::endl;
+    std::cout << "0x: " << scans[0].x << " 0z: " << scans[0].z <<  " 0origo: " << scans[0].origo << std::endl;
+    std::cout << "1x: " << scans[1].x << " 1z: " << scans[1].z << " 1origo: " << scans[1].origo  << std::endl;
     Cuboid cuboid = generate_cuboid(width, height, depth);
     std::cout << "co: " << cuboid.origo << " cx: " << cuboid.x << " cy: " << cuboid.y << " cz: " << cuboid.z << std::endl;
 
@@ -522,8 +522,7 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
         std::stringstream ss;
         ss << "rect_" << i << ".pcd";
         std::string filename = ss.str();
-        pcl::io::savePCDFile(filename, *(scans.at(i)->point_cloud_ptr));
-        delete scans.at(i);
+        pcl::io::savePCDFile(filename, *scans[i].point_cloud_ptr);
     }
     pcl::io::savePCDFile("cuboid.pcd", *cuboid.point_cloud_ptr);
     return true;
