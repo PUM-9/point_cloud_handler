@@ -420,7 +420,7 @@ scan_object(ros::ServiceClient client, const unsigned int accuracy) throw (int){
         }
         tries = 0;
         scans.push_back(rectangle);
-
+        retry = true;
         }
 
     return scans;
