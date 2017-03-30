@@ -354,6 +354,10 @@ get_start_angle(ros::ServiceClient client, const unsigned int times_to_scan)
                 optimal_angle = v;
                 first = false;
             }
+        } else {
+            std::cout << "Exit code: " << srv.exit_code << std::endl;
+            std::cout << "Error: " << srv.error_message << std::endl;
+            system("rosnode kill point_cloud_handler");
         }
     }
     return optimal_angle;
