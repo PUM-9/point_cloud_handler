@@ -355,8 +355,8 @@ get_start_angle(ros::ServiceClient client, const unsigned int times_to_scan)
                 first = false;
             }
         } else {
-            std::cout << "Exit code: " << srv.exit_code << std::endl;
-            std::cout << "Error: " << srv.error_message << std::endl;
+            std::cout << "Exit code: " << srv.response.exit_code << std::endl;
+            std::cout << "Error: " << srv.response.error_message << std::endl;
             system("rosnode kill point_cloud_handler");
         }
     }
