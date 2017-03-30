@@ -85,7 +85,7 @@ bool is_rectangle(const Rectangle &rectangle) {
     float x_tolerance = origo_to_x / tolerance_factor;
     float z_tolerance = origo_to_z / tolerance_factor;
 
-    std::cout << "origo->x: " << origo_to_x << " x->xz: " << x_to_xz << " z->xz: " << z_to_xz << " o->y: " << origo_to_z << std::endl;
+    std::cout << "origo->x: " << origo_to_x << " x->xz: " << x_to_xz << " z->xz: " << z_to_xz << " o->z: " << origo_to_z << std::endl;
     std::cout << "x tol: " << x_tolerance << " z tol: " << z_tolerance << std::endl;
 
     return (std::abs(origo_to_x - z_to_xz) < x_tolerance) && (std::abs(origo_to_z - x_to_xz) < z_tolerance);
