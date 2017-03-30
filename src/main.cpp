@@ -399,6 +399,9 @@ scan_object(ros::ServiceClient client, const unsigned int accuracy) {
     Rectangle rectangle;
     for (int i=0; i < 4; i++) {
         y_angle = start + i*90;
+        if (y_angle >= 360) {
+            y_angle -= 360;
+        }
         srv.request.y_angle = y_angle;
         rectangle = scan(client, srv, y_angle);
         scans.push_back(rectangle);
