@@ -375,8 +375,6 @@ Rectangle scan(ros::ServiceClient client, ScanService srv, degrees y_angle) thro
 
             if (!is_rectangle(rectangle)) {
                 std::cout << "ERROR: Did not recognize image as a a rectangle" << std::endl;
-                system("rosnode kill point_cloud_handler");
-
             }
         } else {
             std::cout << "Service code error exit code: " << srv.response.exit_code << std::endl;
