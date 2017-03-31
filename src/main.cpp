@@ -48,7 +48,11 @@ struct Rectangle {
     Point origo, x, z, xz;
 };
 
-
+struct ScanData {
+    const unsigned int remaining_scans;
+    float optimal_depth;
+    degrees optimal_angle, current_angle, rotation;
+};
 
 float find_depth(CloudPtr cloud) {
 
@@ -317,82 +321,74 @@ message_to_cloud(const PointCloudMessage &message, CloudPtr cloud) {
 }
 
 degrees
-get_start_angle(ros::ServiceClient client, const unsigned int times_to_scan)
-{
+get_start_angle(ros::ServiceClient client, ScanData &scan_data){
     CloudPtr current_cloud_ptr (new Cloud());
     CloudPtr optimal_cloud_ptr (new Cloud());
     CloudPtr temp_cloud_ptr (new Cloud());
-    degrees optimal_angle;
-    float optimal_depth;
-    degrees rotation = 90/times_to_scan;
-    bool first = true;
 
-    // Setup the scan service and request the service to set the angles.
     ScanService srv;
     srv.request.x_angle = 0;
-    // Call the ScanService (wrapper), it will return true if service call succeeded, it will return false if the call not succeed.
-    // It will also check if the exit_code is valid (return 0).
-    for (degrees v=0; v <= 90; v+=rotation) {
+
+    for (degrees v=scan_data.current_angle; v <= 90; v+=scan_data.rotation) {
 
         srv.request.y_angle = v;
 
         if (client.call(srv) && !srv.response.exit_code) {
 
             const PointCloudMessage msg = srv.response.point_cloud;
-
             message_to_cloud(msg, temp_cloud_ptr);
-
             filter(temp_cloud_ptr, current_cloud_ptr);
 
             float current_depth = find_depth(current_cloud_ptr);
-            std::cout << "current depth " << current_depth << std::endl;
-            if (first || current_depth < optimal_depth) {
-                std::cout << "new optimal depth " << current_depth << std::endl;
-                std::cout << "new optimal angle " << v << std::endl;
+            std::cout << "Current depth: " << current_depth << std::endl;
+
+            if (current_depth < scan_data.optimal_depth) {
+                std::cout << "New optimal depth is: " << current_depth << std::endl;
+                std::cout << "At angle: " << v << std::endl;
                 optimal_cloud_ptr = current_cloud_ptr;
-                optimal_depth = current_depth;
-                optimal_angle = v;
+                scan_data.optimal_depth = current_depth;
+                scan_data.optimal_angle = v;
                 first = false;
             }
         } else {
             std::cout << "Exit code: " << srv.response.exit_code << std::endl;
             std::cout << "Error: " << srv.response.error_message << std::endl;
+            // TODO: Save necessary data to file so we can resume a scan.
             std::exit(srv.response.exit_code);
         }
     }
-    return optimal_angle;
 }
 
-
-Rectangle scan(ros::ServiceClient client, ScanService srv, degrees y_angle) {
+Rectangle
+scan(ros::ServiceClient client, ScanService srv, degrees y_angle) {
     Rectangle rectangle;
-    if (client.call(srv)) {
-        if (!srv.response.exit_code) {
 
-            CloudPtr cloud_to_save_ptr(new Cloud());
-            CloudPtr cloud_temp_ptr(new Cloud());
-            rectangle.pov_angle = y_angle;
-            message_to_cloud(srv.response.point_cloud, cloud_temp_ptr);
-            filter(cloud_temp_ptr, cloud_to_save_ptr);
-            rectangle.point_cloud_ptr = cloud_to_save_ptr;
-            set_rectangle_corners(rectangle);
+    if (client.call(srv) && !srv.response.exit_code) {
+        CloudPtr cloud_to_save_ptr(new Cloud());
+        CloudPtr cloud_temp_ptr(new Cloud());
+        rectangle.pov_angle = y_angle;
+        message_to_cloud(srv.response.point_cloud, cloud_temp_ptr);
+        filter(cloud_temp_ptr, cloud_to_save_ptr);
+        rectangle.point_cloud_ptr = cloud_to_save_ptr;
+        set_rectangle_corners(rectangle);
 
-            if (!is_rectangle(rectangle)) {
-                std::cout << "ERROR: Did not recognize image as a a rectangle" << std::endl;
-            }
-        } else {
-            std::cout << "Service code error exit code: " << srv.response.exit_code << std::endl;
-            std::cout << "Error message: " << srv.response.error_message << std::endl;
-            std::exit(srv.response.exit_code);
+        if (!is_rectangle(rectangle)) {
+            std::cout << "ERROR: Did not recognize image as a a rectangle" << std::endl;
         }
-
-        return rectangle;
+    } else {
+        std::cout << "Service code error exit code: " << srv.response.exit_code << std::endl;
+        std::cout << "Error message: " << srv.response.error_message << std::endl;
+        std::exit(srv.response.exit_code);
     }
+
+    return rectangle;
+
 }
 
 std::vector<Rectangle>
 scan_object(ros::ServiceClient client, const unsigned int accuracy) {
-    degrees start = get_start_angle(client, accuracy);
+    ScanData scan_data = initialize_scan_data(accuracy);
+    degrees start = get_start_angle(client, scan_data);
     std::cout << "start at angle: " << start << std::endl;
     // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
     std::vector<Rectangle> scans;
@@ -415,7 +411,14 @@ scan_object(ros::ServiceClient client, const unsigned int accuracy) {
 }
 
 Cuboid
-generate_cuboid(const millimeter width, const millimeter height, const millimeter depth) {
+generate_cuboid(std::vector<Rectangle> &scans) {
+
+    millimeter width = std::abs(scans[0].z.z - scans[0].origo.z);
+    millimeter height = std::abs(scans[0].x.x - scans[0].origo.x);
+    millimeter depth = std::abs(scans[1].z.z - scans[1].origo.z);
+    std::cout << "w: " << width << " h: " << height << " d: " << depth << std::endl;
+    std::cout << "0x: " << scans[0].x << " 0z: " << scans[0].z <<  " 0origo: " << scans[0].origo << std::endl;
+    std::cout << "1x: " << scans[1].x << " 1z: " << scans[1].z << " 1origo: " << scans[1].origo  << std::endl;
 
     millimeter step_size = 0.1;
     CloudPtr point_cloud_ptr (new Cloud());
@@ -473,6 +476,35 @@ generate_cuboid(const millimeter width, const millimeter height, const millimete
 
 }
 
+void
+generate_pcd_files(std::vector<Rectangle> &scans){
+    for (int i = 0; i < scans.size(); i++){
+        std::stringstream ss;
+        ss << "rect_" << i << ".pcd";
+        std::string filename = ss.str();
+        pcl::io::savePCDFile(filename, *scans[i].point_cloud_ptr);
+    }
+    pcl::io::savePCDFile("cuboid.pcd", *cuboid.point_cloud_ptr);
+}
+
+
+ScanData
+read_scan_data()
+{
+    //Todo: Read the file with saved parameters
+}
+
+ScanData
+initialize_scan_data(const unsigned int accuracy){
+    ScanData scan_data;
+    scan_data.optimal_depth = std::numeric_limits<int>::max();
+    scan_data.optimal_angle = 0;
+    scan_data.rotation = 90/accuracy;
+    scan_data.current_angle = 0;
+    scan_data.remaining_scans = accuracy;
+    return scan_data;
+}
+
 
 /**
     This function will scan an object and register all the point clouds to a resulting point cloud.
@@ -483,31 +515,14 @@ generate_cuboid(const millimeter width, const millimeter height, const millimete
 bool 
 get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
 {
-
     std::cout << "get point cloud" << std::endl;
     ros::NodeHandle node_handle;
     ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
     std::vector<Rectangle> scans;
-
     scans = scan_object(client, req.accuracy);
-
-    millimeter width = std::abs(scans[0].z.z - scans[0].origo.z);
-    millimeter height = std::abs(scans[0].x.x - scans[0].origo.x);
-    millimeter depth = std::abs(scans[1].z.z - scans[1].origo.z);
-    std::cout << "w: " << width << " h: " << height << " d: " << depth << std::endl;
-    std::cout << "0x: " << scans[0].x << " 0z: " << scans[0].z <<  " 0origo: " << scans[0].origo << std::endl;
-    std::cout << "1x: " << scans[1].x << " 1z: " << scans[1].z << " 1origo: " << scans[1].origo  << std::endl;
-    Cuboid cuboid = generate_cuboid(width, height, depth);
+    Cuboid cuboid = generate_cuboid(scans);
     std::cout << "co: " << cuboid.origo << " cx: " << cuboid.x << " cy: " << cuboid.y << " cz: " << cuboid.z << std::endl;
-
-
-    for (int i = 0; i < scans.size(); i++){
-        std::stringstream ss;
-        ss << "rect_" << i << ".pcd";
-        std::string filename = ss.str();
-        pcl::io::savePCDFile(filename, *scans[i].point_cloud_ptr);
-    }
-    pcl::io::savePCDFile("cuboid.pcd", *cuboid.point_cloud_ptr);
+    generate_pcd_files(scans);
     return true;
 }
 
@@ -530,6 +545,21 @@ test_scan(TestScan::Request &req, TestScan::Response &resp)
     return true;
 }
 
+bool
+resume_scan()
+{
+    std::cout << "Resume previous scan" << std::endl;
+    ScanData scan_data;
+    ros::NodeHandle node_handle;
+    ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
+    ScanData scan_data = read_scan_data();
+    scans = scan_object(client, scan_data);
+    Cuboid cuboid = generate_cuboid(scans);
+    std::cout << "co: " << cuboid.origo << " cx: " << cuboid.x << " cy: " << cuboid.y << " cz: " << cuboid.z << std::endl;
+    generate_pcd_files(scans);
+    return true;
+}
+
 /**
     Main function that will init a ros node and spin up the get_point_cloud service. 
     @param argc Used to parse arguments from the command line.
@@ -546,6 +576,8 @@ main (int argc, char** argv)
 
     ros::ServiceServer testService = node_handle.advertiseService("test_scan", test_scan);
     ROS_INFO("Ready to start a test scan");
+
+    //TODO: Create a new service: ResumeScan.srv
 
     ros::spin();
     return (0);
