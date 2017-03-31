@@ -323,7 +323,6 @@ message_to_cloud(const PointCloudMessage &message, CloudPtr cloud) {
 degrees
 get_start_angle(ros::ServiceClient client, ScanData &scan_data){
     CloudPtr current_cloud_ptr (new Cloud());
-    CloudPtr optimal_cloud_ptr (new Cloud());
     CloudPtr temp_cloud_ptr (new Cloud());
 
     ScanService srv;
@@ -345,7 +344,6 @@ get_start_angle(ros::ServiceClient client, ScanData &scan_data){
             if (current_depth < scan_data.optimal_depth) {
                 std::cout << "New optimal depth is: " << current_depth << std::endl;
                 std::cout << "At angle: " << v << std::endl;
-                optimal_cloud_ptr = current_cloud_ptr;
                 scan_data.optimal_depth = current_depth;
                 scan_data.optimal_angle = v;
                 first = false;
@@ -357,6 +355,7 @@ get_start_angle(ros::ServiceClient client, ScanData &scan_data){
             std::exit(srv.response.exit_code);
         }
     }
+    return scan_data.optimal_angle;
 }
 
 Rectangle
