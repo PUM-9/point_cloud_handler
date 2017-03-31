@@ -357,14 +357,14 @@ get_start_angle(ros::ServiceClient client, const unsigned int times_to_scan)
         } else {
             std::cout << "Exit code: " << srv.response.exit_code << std::endl;
             std::cout << "Error: " << srv.response.error_message << std::endl;
-            system("rosnode kill point_cloud_handler");
+            std::exit(srv.response.exit_code);
         }
     }
     return optimal_angle;
 }
 
 
-Rectangle scan(ros::ServiceClient client, ScanService srv, degrees y_angle) throw(int) {
+Rectangle scan(ros::ServiceClient client, ScanService srv, degrees y_angle) {
     Rectangle rectangle;
     if (client.call(srv)) {
         if (!srv.response.exit_code) {
@@ -383,7 +383,7 @@ Rectangle scan(ros::ServiceClient client, ScanService srv, degrees y_angle) thro
         } else {
             std::cout << "Service code error exit code: " << srv.response.exit_code << std::endl;
             std::cout << "Error message: " << srv.response.error_message << std::endl;
-            system("rosnode kill point_cloud_handler");
+            std::exit(srv.response.exit_code);
         }
 
         return rectangle;
