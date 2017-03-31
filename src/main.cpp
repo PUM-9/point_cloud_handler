@@ -244,72 +244,6 @@ void set_rectangle_corners(Rectangle &rectangle) {
     }
 }
 
-/**
-   This function filters a cloud by performing a few steps:
-   * It removes all noise data and outliers
-   * It scales the cloud to the correct proportions
-   * It makes sure the cloud has the correct rotation and position around origin
-   @param cloud_in The input cloud, taken directly from a TreeD scan.
-   @param cloud_out The filtered and scaled cloud is returned here.
-   @param rotation The rotation the scan was taken from (in degrees).
- */
-
-/*void
-filter(CloudPtr cloud_in, CloudPtr cloud_out)
-{
-   // Use a pass through filter to remove all points outside of specific coordinates
-   pcl::PassThrough<pcl::PointXYZ> pt_filter;
-   pt_filter.setInputCloud(cloud_in);
-
-   // Filter on the x axis
-   // This will remove the stick the object is attached to
-   pt_filter.setFilterFieldName("x");
-   pt_filter.setFilterLimits(100, 511);
-   pt_filter.setFilterLimitsNegative(false);
-   pt_filter.filter(*cloud_out);
-
-   // Filter on the z axis to remove the plane of noise data in the
-   // beginning of the scan
-   pt_filter.setInputCloud(cloud_out);
-   pt_filter.setFilterFieldName("z");
-   pt_filter.setFilterLimits(-1, 1);
-   pt_filter.setFilterLimitsNegative(true);
-   pt_filter.filter(*cloud_out);
-
-   // Filter on the y axis
-   pt_filter.setInputCloud(cloud_out);
-   pt_filter.setFilterFieldName("y");
-   pt_filter.setFilterLimits(100, 580);
-   pt_filter.setFilterLimitsNegative(false);
-   pt_filter.filter(*cloud_out);
-
-   // Remove points that are far away from other points
-   pcl::RadiusOutlierRemoval<pcl::PointXYZ> outlier_filter;
-   outlier_filter.setInputCloud(cloud_out);
-   outlier_filter.setRadiusSearch(0.8);
-   outlier_filter.setMinNeighborsInRadius(2);
-   outlier_filter.filter(*cloud_out);
-
-
-   // Translate the object to move the center of the object to the origin (approximately).
-   // This works but should be done in a better way. Right now these values
-   // will be wrong if the scanner hardware is moved.
-   Eigen::Affine3f translation_transform(Eigen::Affine3f::Identity());
-   translation_transform.translation() << -528.0, -346.0, 591.0;
-   pcl::transformPointCloud(*cloud_out, *cloud_out, translation_transform);
-
-   // Scale the point cloud by half to make it the correct proportions.
-   // The scaling factor 0.5 assumes the scans are run with cart speed 200 mm/s.
-   float scale = 0.5;
-   Eigen::Affine3f scale_transform(Eigen::Affine3f::Identity());
-   scale_transform.scale(Eigen::Vector3f(1, 1, scale));
-   pcl::transformPointCloud(*cloud_out, *cloud_out, scale_transform);
-
-   return;
-}
-*/
-
-
 void
 message_to_cloud(const PointCloudMessage &message, CloudPtr cloud) {
     pcl::PCLPointCloud2 pcl_pc2;
@@ -358,14 +292,13 @@ get_start_angle(ros::ServiceClient client, const unsigned int times_to_scan)
         } else {
             std::cout << "Exit code: " << srv.response.exit_code << std::endl;
             std::cout << "Error: " << srv.response.error_message << std::endl;
-            system("rosnode kill point_cloud_handler");
+            std::exit(srv.response.exit_code);
         }
     }
     return optimal_angle;
 }
 
-
-Rectangle scan(ros::ServiceClient client, ScanService srv, degrees y_angle) throw(int) {
+Rectangle scan(ros::ServiceClient client, ScanService srv, degrees y_angle) {
     Rectangle rectangle;
     if (client.call(srv)) {
         if (!srv.response.exit_code) {
@@ -374,7 +307,7 @@ Rectangle scan(ros::ServiceClient client, ScanService srv, degrees y_angle) thro
             CloudPtr cloud_temp_ptr(new Cloud());
             rectangle.pov_angle = y_angle;
             message_to_cloud(srv.response.point_cloud, cloud_temp_ptr);
-            filter(cloud_temp_ptr, cloud_to_save_ptr, 0);
+            filter(cloud_temp_ptr, cloud_to_save_ptr, y_angle);
             rectangle.point_cloud_ptr = cloud_to_save_ptr;
             set_rectangle_corners(rectangle);
 
@@ -384,7 +317,7 @@ Rectangle scan(ros::ServiceClient client, ScanService srv, degrees y_angle) thro
         } else {
             std::cout << "Service code error exit code: " << srv.response.exit_code << std::endl;
             std::cout << "Error message: " << srv.response.error_message << std::endl;
-            system("rosnode kill point_cloud_handler");
+            std::exit(srv.response.exit_code);
         }
 
         return rectangle;
@@ -417,7 +350,6 @@ scan_object(ros::ServiceClient client, const unsigned int accuracy) {
 
 Cuboid
 generate_cuboid(const millimeter width, const millimeter height, const millimeter depth) {
-
     millimeter step_size = 0.1;
     CloudPtr point_cloud_ptr (new Cloud());
     Cuboid cuboid;
@@ -527,7 +459,7 @@ test_scan(TestScan::Request &req, TestScan::Response &resp)
         message_to_cloud(srv.response.point_cloud, cloud_temp_ptr);
 	ROS_INFO("Saving unfiltered file");
 	pcl::io::savePCDFile("test_scan_unfilt.pcd", *cloud_temp_ptr);
-        filter(cloud_temp_ptr, cloud_to_save_ptr, 0);
+        filter(cloud_temp_ptr, cloud_to_save_ptr, srv.request.y_angle);
         pcl::io::savePCDFile(req.filename, *cloud_to_save_ptr);
     }
     return true;

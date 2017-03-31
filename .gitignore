@@ -7,7 +7,7 @@
 .idea/pum-9.iml
 .idea/workspace.xml
 *.pcd
-
+cmake-build-debug/
 
 # Created by https://www.gitignore.io/api/python,c++
 
