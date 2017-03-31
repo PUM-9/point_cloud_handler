@@ -58,6 +58,7 @@ find_package(Boost REQUIRED COMPONENTS system)
 add_service_files(
   FILES
   GetPointCloud.srv
+  TestScan.srv
 )
 
 ## Generate actions in the 'action' folder
@@ -131,14 +132,14 @@ include_directories(
 # add_dependencies(point_cloud_handler ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-add_executable(main src/main.cpp)
+add_executable(pch_main src/main.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-add_dependencies(main ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(pch_main ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(main
+target_link_libraries(pch_main
   ${catkin_LIBRARIES}
 )
 

@@ -63,6 +63,42 @@ bool remove_stick(PointCloud::ConstPtr cloud_in, PointCloud::Ptr cloud_out)
         clusters.push_back(cluster);
     }
 
+    
+    if (!clusters.empty()) {
+        std::vector<PointCloud::Ptr> good_clusters;
+
+        for (size_t i = 0; i < clusters.size(); ++i) {
+	    std::stringstream ss;
+	    ss << "cluster-" << i << ".pcd";
+	    pcl::io::savePCDFile(ss.str(), *clusters.at(i));
+
+	    Eigen::Vector4f centroid(Eigen::Vector4f::Zero());
+	    pcl::compute3DCentroid(*clusters.at(i), centroid);
+	  
+	    std::cout << "Centroid: " << std::endl << centroid << std::endl << std::endl;
+
+	    if (centroid(0, 0) < 515) {
+	        good_clusters.push_back(clusters.at(i));
+	    }
+	}
+	
+	std::cout << "Good clusters: " << good_clusters.size() << std::endl;
+	for (size_t i = 0; i < good_clusters.size(); ++i) {
+	    std::cout << "Adding cluster " << i << std::endl;
+	    if (i == 0) {
+	        *cloud_out = *good_clusters.at(i);
+	    } else {
+	        *cloud_out += *good_clusters.at(i);
+	    }
+	}
+	
+	return true;
+    } else {
+        *cloud_out = *cloud_in;
+        return false;
+    }
+
+
     // If we have exactly two clusters one will be the object and one will be the stick.
     // Look at which object is higher up to figure out which is which.
     if (clusters.size() == 2) {
@@ -111,7 +147,7 @@ void filter(PointCloud::ConstPtr cloud_in, PointCloud::Ptr cloud_out, int rotati
 
     // Do initial rough filtering on the x axis to remove noise data
     pt_filter.setFilterFieldName("x");
-    pt_filter.setFilterLimits(100, 568);
+    pt_filter.setFilterLimits(310, 568);
     pt_filter.setFilterLimitsNegative(false);
     pt_filter.filter(*cloud_out);
     
