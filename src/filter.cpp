@@ -77,7 +77,7 @@ bool remove_stick(PointCloud::ConstPtr cloud_in, PointCloud::Ptr cloud_out)
 	  
 	    std::cout << "Centroid: " << std::endl << centroid << std::endl << std::endl;
 
-	    if (centroid(0, 0) < 515) {
+	    if (centroid(0, 0) < 510) {
 	        good_clusters.push_back(clusters.at(i));
 	    }
 	}

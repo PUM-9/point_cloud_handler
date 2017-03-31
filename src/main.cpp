@@ -453,7 +453,7 @@ test_scan(TestScan::Request &req, TestScan::Response &resp)
     ScanService srv;
     CloudPtr cloud_to_save_ptr (new Cloud());
     CloudPtr cloud_temp_ptr (new Cloud());
-    srv.request.x_angle = 50;
+    srv.request.x_angle = 0;
     srv.request.y_angle = 0;
     if (client.call(srv) && !srv.response.exit_code){
         message_to_cloud(srv.response.point_cloud, cloud_temp_ptr);
