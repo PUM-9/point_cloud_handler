@@ -126,7 +126,7 @@ void filter(PointCloud::ConstPtr cloud_in, PointCloud::Ptr cloud_out, int rotati
     // Filter on the y axis
     pt_filter.setInputCloud(cloud_out);
     pt_filter.setFilterFieldName("y");
-    pt_filter.setFilterLimits(100, 580);
+    pt_filter.setFilterLimits(250, 580);
     pt_filter.setFilterLimitsNegative(false);
     pt_filter.filter(*cloud_out);
 
