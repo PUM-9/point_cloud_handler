@@ -360,13 +360,17 @@ get_start_angle(ros::ServiceClient client, const unsigned int times_to_scan)
                 optimal_angle = v;
                 first = false;
             }
+        } else {
+            std::cout << "Exit code: " << srv.response.exit_code << std::endl;
+            std::cout << "Error: " << srv.response.error_message << std::endl;
+            std::exit(srv.response.exit_code);
         }
     }
     return optimal_angle;
 }
 
 
-Rectangle scan(ros::ServiceClient client, ScanService srv, degrees y_angle) throw(int) {
+Rectangle scan(ros::ServiceClient client, ScanService srv, degrees y_angle) {
     Rectangle rectangle;
     if (client.call(srv)) {
         if (!srv.response.exit_code) {
@@ -385,7 +389,7 @@ Rectangle scan(ros::ServiceClient client, ScanService srv, degrees y_angle) thro
         } else {
             std::cout << "Service code error exit code: " << srv.response.exit_code << std::endl;
             std::cout << "Error message: " << srv.response.error_message << std::endl;
-            system("rosnode kill point_cloud_handler");
+            std::exit(srv.response.exit_code);
         }
 
         return rectangle;
@@ -405,6 +409,9 @@ scan_object(ros::ServiceClient client, const unsigned int accuracy) {
     Rectangle rectangle;
     for (int i=0; i < 4; i++) {
         y_angle = start + i*90;
+        if (y_angle >= 360) {
+            y_angle -= 360;
+        }
         srv.request.y_angle = y_angle;
         rectangle = scan(client, srv, y_angle);
         scans.push_back(rectangle);
@@ -632,7 +639,14 @@ test_scan(TestScan::Request &req, TestScan::Response &resp)
 
     // Crerate target and source CloudPtr
     CloudPtr target_cloud_read(new Cloud);
-    CloudPtr source_cloud_read(new Cloud);
+    CloudPtr source0_cloud_read(new Cloud);
+    CloudPtr source1_cloud_read(new Cloud);
+    CloudPtr source2_cloud_read(new Cloud);
+    CloudPtr source3_cloud_read(new Cloud);
+    CloudPtr target_cloud_new(new Cloud);
+    CloudPtr final_cloud(new Cloud);
+
+    std::vector<Rectangle> scans;
 
     // Read Target pointcloud
     if (pcl::io::loadPCDFile("cuboid.pcd", *target_cloud_read) == -1) {
@@ -640,28 +654,147 @@ test_scan(TestScan::Request &req, TestScan::Response &resp)
         PCL_ERROR ("Couldn't read first file! \n");
         return (-1);
     }
-
-    // Read source pointcloud
-    if (pcl::io::loadPCDFile("rect_0.pcd", *source_cloud_read) == -1) {
-        PCL_ERROR ("Couldn't read second input file! \n");
-        return (-1);
-    }
-
     // Create Cuboid object
     Cuboid Target;
     Target.point_cloud_ptr = target_cloud_read;
     set_cuboid_corners(Target);
-
-    // Create Rectangle object
-    Rectangle Source;
-    Source.point_cloud_ptr = source_cloud_read;
-    set_rectangle_corners(Source);
-
-    // Run registation functrion
-    if(register_point_clouds_icp(Target, Source) == false){
-        PCL_ERROR ("Registration failed! \n");
+    // Read source pointcloud
+    if (pcl::io::loadPCDFile("rect_0.pcd", *source0_cloud_read) == -1) {
+        PCL_ERROR ("Couldn't read second input file! \n");
         return (-1);
     }
+    // Create Rectangle object
+    Rectangle Source0;
+    Source0.point_cloud_ptr = source0_cloud_read;
+    set_rectangle_corners(Source0);
+    scans.push_back(Source0);
+
+    if (pcl::io::loadPCDFile("rect_1.pcd", *source1_cloud_read) == -1) {
+        PCL_ERROR ("Couldn't read second input file! \n");
+        return (-1);
+    }
+    Rectangle Source1;
+    Source1.point_cloud_ptr = source1_cloud_read;
+    set_rectangle_corners(Source1);
+    scans.push_back(Source1);
+    if (pcl::io::loadPCDFile("rect_2.pcd", *source2_cloud_read) == -1) {
+        PCL_ERROR ("Couldn't read second input file! \n");
+        return (-1);
+    }
+    Rectangle Source2;
+    Source2.point_cloud_ptr = source2_cloud_read;
+    set_rectangle_corners(Source2);
+    scans.push_back(Source2);
+    if (pcl::io::loadPCDFile("rect_3.pcd", *source3_cloud_read) == -1) {
+        PCL_ERROR ("Couldn't read second input file! \n");
+        return (-1);
+    }
+    Rectangle Source3;
+    Source3.point_cloud_ptr = source3_cloud_read;
+    set_rectangle_corners(Source3);
+    scans.push_back(Source3);
+
+
+
+    for(int i = 0; i < 2; i++){
+
+
+        Eigen::Affine3f TransformRotate = Eigen::Affine3f::Identity();
+        Eigen::Affine3f TransformTranslate = Eigen::Affine3f::Identity();
+
+        // Compute rotation
+        degrees angle = 90; // The angle of rotation in radians
+        float theta = angle*(M_PI/180);
+        TransformRotate.rotate(Eigen::AngleAxisf(theta, Eigen::Vector3f::UnitX()));
+
+        // Executing the rotation
+        CloudPtr transformed_cloud(new Cloud);
+        pcl::transformPointCloud(*Target.point_cloud_ptr, *Target.point_cloud_ptr, TransformRotate);
+        Target.pov_angle = theta;
+
+        // Update target
+        //target.point_cloud_ptr = transformed_cloud;
+        set_cuboid_corners(Target);
+
+        // Compute the translation
+        float translation_x;
+        float translation_y;
+        float translation_z;
+        if(i == 1){
+            std::cout<<i<<std::endl;
+            translation_x = scans[i].origo.x - Target.xy.x;
+            translation_y = scans[i].origo.y - Target.xy.y;
+            translation_z = scans[i].origo.z - Target.xy.z;
+        }
+
+        else{
+            translation_x = scans[i].origo.x - Target.origo.x;
+            translation_y = scans[i].origo.y - Target.origo.y;
+            translation_z = scans[i].origo.z - Target.origo.z;
+        }
+
+
+
+
+        std::cout<<"translation: "<<translation_x<<" , "<<translation_y<<" , "<<translation_z<<std::endl;
+
+        // Execute the translation
+        TransformTranslate.translation() << translation_x, translation_y, translation_z;
+        pcl::transformPointCloud(*Target.point_cloud_ptr, *Target.point_cloud_ptr, TransformTranslate);
+
+        //Update target
+        set_cuboid_corners(Target);
+
+        // Start ICP
+        pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
+
+        // Parameters for the ICP algorithm
+        icp.setInputTarget(scans[i].point_cloud_ptr);
+        icp.setInputSource(Target.point_cloud_ptr);
+        icp.setMaximumIterations(25);
+        icp.setTransformationEpsilon(1e-7);
+        icp.setMaxCorrespondenceDistance(3);
+        //icp.setEuclideanFitnessEpsilon(1);
+        //icp.setRANSACOutlierRejectionThreshold(1);
+
+        icp.align(*Target.point_cloud_ptr);
+
+        if (icp.hasConverged()) {
+            std::cout << "ICP converged." << std::endl
+                      << "The score is " << icp.getFitnessScore() << std::endl;
+            //std::cout << "Transformation matrix:" << std::endl;
+            //std::cout << icp.getFinalTransformation() << std::endl;
+            Eigen::Matrix4f transformationMatrix = icp.getFinalTransformation();
+            //std::cout << "trans %n" << transformationMatrix << std::endl;
+
+            pcl::transformPointCloud(*Target.point_cloud_ptr, *target_cloud_new, transformationMatrix);
+
+            *final_cloud = *scans[i].point_cloud_ptr + *Target.point_cloud_ptr;
+
+            pcl::io::savePCDFileASCII("ICP_result_pass.pcd", *final_cloud);
+            //return true;
+            Target.point_cloud_ptr = final_cloud;
+            set_cuboid_corners(Target);
+        }
+
+        else std::cout << "ICP did not converge." << std::endl;
+
+        Eigen::Matrix4f transformationMatrix = icp.getFinalTransformation();
+        //std::cout << "trans %n" << transformationMatrix << std::endl;
+
+        pcl::transformPointCloud(*Target.point_cloud_ptr, *target_cloud_new, transformationMatrix);
+
+        *final_cloud = *scans[i].point_cloud_ptr + *Target.point_cloud_ptr;
+
+        pcl::io::savePCDFileASCII("ICP_result_fail.pcd", *final_cloud);
+        Target.point_cloud_ptr = final_cloud;
+        set_cuboid_corners(Target);
+
+        //return false;
+    }
+    return true;
+
+
 }
 
 /**
