@@ -59,6 +59,7 @@ add_service_files(
   FILES
   GetPointCloud.srv
   TestScan.srv
+  ResumeScan.srv
 )
 
 ## Generate actions in the 'action' folder
