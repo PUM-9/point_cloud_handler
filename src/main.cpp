@@ -23,11 +23,10 @@ typedef sensor_msgs::PointCloud2 PointCloudMessage;
 typedef treedwrapper::WrapperScan ScanService;
 typedef point_cloud_handler::GetPointCloud GetPointCloud;
 typedef point_cloud_handler::TestScan TestScan;
+typedef point_cloud_handler::ResumeScan ResumeScan;
 typedef int degrees;
 typedef unsigned short int uint16;
 typedef float millimeter;
-
-
 typedef pcl::PointXYZ Point;
 typedef pcl::PointCloud<Point> Cloud;
 typedef Cloud::Ptr CloudPtr;
@@ -49,7 +48,7 @@ struct Rectangle {
 };
 
 struct ScanData {
-    const unsigned int remaining_scans;
+    const unsigned int completed_scans;
     float optimal_depth;
     degrees optimal_angle, current_angle, rotation;
 };
@@ -311,8 +310,6 @@ filter(CloudPtr cloud_in, CloudPtr cloud_out)
    return;
 }
 
-
-
 void
 message_to_cloud(const PointCloudMessage &message, CloudPtr cloud) {
     pcl::PCLPointCloud2 pcl_pc2;
@@ -320,7 +317,29 @@ message_to_cloud(const PointCloudMessage &message, CloudPtr cloud) {
     pcl::fromPCLPointCloud2(pcl_pc2,*cloud);
 }
 
-degrees
+void
+save_scan_info(bool is_opt_depth_found, ScanData scan_data){
+    std::ofstream output_file;
+    output_file.open("resume_scan.txt");
+    if (output_file.is_open()) {
+
+        if(is_opt_depth_found){
+            output_file << "is_opt_depth_found: " << "true" << std::endl;
+        } else{
+            output_file << "is_opt_depth_found: " << "false" << std::endl;
+        }
+        output_file << "completed_scans: " << scan_data.remaining_scans << std::endl;
+        output_file << "optimal_depth: " << scan_data.optimal_depth << std::endl;
+        output_file << "optimal_angle: " << scan_data.optimal_angle << std::endl;
+        output_file << "current_angle: " << scan_data.current_angle << std::endl;
+        output_file << "rotation: " << scan_data.rotation << std::endl;
+        output_file.close();
+    }else{
+        std::cout << "Unable to open file" << std::endl;
+    }
+}
+
+void
 get_start_angle(ros::ServiceClient client, ScanData &scan_data){
     CloudPtr current_cloud_ptr (new Cloud());
     CloudPtr temp_cloud_ptr (new Cloud());
@@ -346,20 +365,23 @@ get_start_angle(ros::ServiceClient client, ScanData &scan_data){
                 std::cout << "At angle: " << v << std::endl;
                 scan_data.optimal_depth = current_depth;
                 scan_data.optimal_angle = v;
-                first = false;
             }
+            scan_data.current_angle = v;
+            scan_data.completed_scans = (90-v)/scan_data.rotation;
         } else {
+
             std::cout << "Exit code: " << srv.response.exit_code << std::endl;
             std::cout << "Error: " << srv.response.error_message << std::endl;
-            // TODO: Save necessary data to file so we can resume a scan.
+            std::cout << "You can resume the scan with ResumeScan service: " << std::endl;
+
+            save_scan_info(is_opt_depth_found = true, scan_data);
             std::exit(srv.response.exit_code);
         }
     }
-    return scan_data.optimal_angle;
 }
 
 Rectangle
-scan(ros::ServiceClient client, ScanService srv, degrees y_angle) {
+scan(ros::ServiceClient client, ScanService srv, degrees y_angle, ScanData scan_data) {
     Rectangle rectangle;
 
     if (client.call(srv) && !srv.response.exit_code) {
@@ -377,6 +399,11 @@ scan(ros::ServiceClient client, ScanService srv, degrees y_angle) {
     } else {
         std::cout << "Service code error exit code: " << srv.response.exit_code << std::endl;
         std::cout << "Error message: " << srv.response.error_message << std::endl;
+
+        scan_data.current_angle = y_angle;
+
+        save_scan_info(is_opt_depth_found = false, scan_data);
+
         std::exit(srv.response.exit_code);
     }
 
@@ -385,25 +412,29 @@ scan(ros::ServiceClient client, ScanService srv, degrees y_angle) {
 }
 
 std::vector<Rectangle>
-scan_object(ros::ServiceClient client, const unsigned int accuracy) {
-    ScanData scan_data = initialize_scan_data(accuracy);
-    degrees start = get_start_angle(client, scan_data);
-    std::cout << "start at angle: " << start << std::endl;
-    // Vector with scanData objects. scanData objects consist of one point cloud and the angles for the rotation board.
-    std::vector<Rectangle> scans;
+scan_object(ros::ServiceClient client, ScanData scan_data) {
+
     ScanService srv;
+    std::vector<Rectangle> scans;
+    Rectangle rectangle;
+
     degrees x_angle = 0;
     degrees y_angle = 0;
     srv.request.x_angle = x_angle;
-    Rectangle rectangle;
-    for (int i=0; i < 4; i++) {
-        y_angle = start + i*90;
+
+    for (int i=scan_data.completed_scans; i < 4; i++) {
+
+        y_angle = scan_data.optimal_angle + i * 90;
+
         if (y_angle >= 360) {
             y_angle -= 360;
         }
+
         srv.request.y_angle = y_angle;
-        rectangle = scan(client, srv, y_angle);
+
+        rectangle = scan(client, srv, y_angle, scan_data);
         scans.push_back(rectangle);
+        scan_data.completed_scans = i;
     }
 
     return scans;
@@ -433,7 +464,6 @@ generate_cuboid(std::vector<Rectangle> &scans) {
             point_cloud_ptr->push_back(point1);
             point_cloud_ptr->push_back(point2);
         }
-
     }
 
     // Create two yz planes in the xyz space.
@@ -490,7 +520,63 @@ generate_pcd_files(std::vector<Rectangle> &scans){
 ScanData
 read_scan_data()
 {
-    //Todo: Read the file with saved parameters
+    std::ifstream input("resume_scan.txt");
+    std::string current_word;
+    std::string line;
+    ScanData scan_data;
+    bool is_opt_depth_found = false;
+
+    if (input.is_open()) {
+
+        while (!input.eof()) {
+            getline(input, line);
+
+            std::istringstream iss(line);
+            iss >> current_word;
+
+            if (current_word == "is_opt_depth_found:"){
+                iss >> current_word;
+                if (iss == "true"){
+                    is_opt_depth_found = true;
+                }
+            }
+            else if (current_word == "completed_scans:"){
+                iss >> current_word;
+                scan_data.completed_scans = iss;
+            }
+
+            else if (current_word == "optimal_depth:") {
+                iss >> current_word;
+                scan_data.optimal_depth = iss;
+
+            }
+            else if (current_word == "optimal_angle:") {
+                iss >> current_word;
+                scan_data.optimal_angle = iss;
+
+            }
+            else if (current_word == "current_angle:") {
+                iss >> current_word;
+                scan_data.current_angle = iss;
+
+            }
+            else if (current_word == "rotation:") {
+                iss >> current_word;
+                scan_data.rotation = iss;
+
+            }
+            else {
+                // The resume_file is out of information, it is only logging information left.
+                break;
+            }
+        }
+        input.close();
+
+    }else {
+        std::cout << "Unable to open file" << std::endl;
+    }
+
+    return is_opt_depth_found;
 }
 
 ScanData
@@ -517,11 +603,16 @@ get_point_cloud(GetPointCloud::Request &req, GetPointCloud::Response &resp)
     std::cout << "get point cloud" << std::endl;
     ros::NodeHandle node_handle;
     ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
-    std::vector<Rectangle> scans;
-    scans = scan_object(client, req.accuracy);
+
+    ScanData scan_data = initialize_scan_data(accuracy);
+    degrees start = get_start_angle(client, scan_data);
+    std::cout << "start at angle: " << start << std::endl;
+    scans = scan_object(client, scan_data);
+
     Cuboid cuboid = generate_cuboid(scans);
     std::cout << "co: " << cuboid.origo << " cx: " << cuboid.x << " cy: " << cuboid.y << " cz: " << cuboid.z << std::endl;
     generate_pcd_files(scans);
+
     return true;
 }
 
@@ -545,17 +636,25 @@ test_scan(TestScan::Request &req, TestScan::Response &resp)
 }
 
 bool
-resume_scan()
+resume_scan(ResumeScan::Request &req, ResumeScan::Response &resp)
 {
     std::cout << "Resume previous scan" << std::endl;
     ScanData scan_data;
     ros::NodeHandle node_handle;
     ros::ServiceClient client = node_handle.serviceClient<ScanService>("wrapper_scan");
-    ScanData scan_data = read_scan_data();
+
+    bool is_opt_depth_found = read_scan_data(scan_data);
+
+    if (!is_opt_depth_found){
+        get_start_angle(client, scan_data);
+    }
+
     scans = scan_object(client, scan_data);
+
     Cuboid cuboid = generate_cuboid(scans);
     std::cout << "co: " << cuboid.origo << " cx: " << cuboid.x << " cy: " << cuboid.y << " cz: " << cuboid.z << std::endl;
     generate_pcd_files(scans);
+
     return true;
 }
 
@@ -576,7 +675,8 @@ main (int argc, char** argv)
     ros::ServiceServer testService = node_handle.advertiseService("test_scan", test_scan);
     ROS_INFO("Ready to start a test scan");
 
-    //TODO: Create a new service: ResumeScan.srv
+    ros::ServiceServer resumeService = node_handle.advertiseService("resume_scan", resume_scan);
+    ROS_INFO("Ready to resume the last scan");
 
     ros::spin();
     return (0);
